@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Member, Availability, Trip } from "../types";
-import { Calendar, Plus, Trash2, CheckCircle2, AlertTriangle, HelpCircle } from "lucide-react";
+import { Calendar, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { uid } from "../lib/id";
 
 interface AvailabilityCalendarProps {
@@ -13,7 +13,6 @@ interface AvailabilityCalendarProps {
 export default function AvailabilityCalendar({
   trip,
   currentMember,
-  isOffline,
   onUpdateTrip,
 }: AvailabilityCalendarProps) {
   const [startDate, setStartDate] = useState("");
@@ -440,7 +439,7 @@ export default function AvailabilityCalendar({
                           <span className="text-[10px] text-slate-400 italic">Pas de disponibilités</span>
                         ) : (
                           <div className="w-full flex gap-1 h-3">
-                            {memberAvails.map((avail, index) => (
+                            {memberAvails.map((avail) => (
                               <div
                                 key={avail.id}
                                 className="h-full bg-indigo-500/80 rounded-sm flex items-center justify-center text-[8px] text-white font-mono px-1.5"

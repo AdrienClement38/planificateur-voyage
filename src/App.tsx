@@ -139,8 +139,7 @@ export default function App() {
 
   const handleSimulateFriendJoin = (friendName?: string) => {
     const names = ["Emma Laurent", "Maxime Petit", "Léa Dubois", "Antoine Moreau", "Chloé Girard", "Lucas Roux"];
-    const avatars = ["👩‍🎨", "👨‍💻", "👩‍🚀", "👨‍🎨", "👩‍⚕️", "👨‍🌾"];
-    
+
     const chosenName = friendName || names[Math.floor(Math.random() * names.length)];
     const chosenAvatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(chosenName)}`;
     

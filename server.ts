@@ -348,7 +348,6 @@ function generateAirbnbExperiences(
 // Generate Google Activités focusing on iconic monuments and geographic public highlights
 function generateGoogleActivities(destination: string, costMultiplier: number): Activity[] {
   const normDest = destination.charAt(0).toUpperCase() + destination.slice(1);
-  const lowerDest = destination.toLowerCase();
   const cleanKey = destination.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
   // Pick from our pre-curated base database, otherwise build procedural landmarks
