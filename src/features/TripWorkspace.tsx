@@ -1,10 +1,16 @@
+import { lazy, Suspense } from "react";
 import { Clock, MapPin, Sparkles, MessageSquare, FileText } from "lucide-react";
 import AvailabilityCalendar from "../components/AvailabilityCalendar";
-import VotingTab from "./VotingTab";
-import ChatTab from "./ChatTab";
-import MediaTab from "./MediaTab";
-import ItineraryTab from "./ItineraryTab";
+import LoadingFallback from "../components/LoadingFallback";
 import { useTripStore } from "../store/TripContext";
+
+// Onglets chargés à la demande (chunks séparés) : seul l'onglet affiché est
+// téléchargé, ce qui allège le bundle initial. Le calendrier reste eager car
+// c'est l'onglet ouvert par défaut.
+const VotingTab = lazy(() => import("./VotingTab"));
+const ChatTab = lazy(() => import("./ChatTab"));
+const MediaTab = lazy(() => import("./MediaTab"));
+const ItineraryTab = lazy(() => import("./ItineraryTab"));
 
 /** Colonne droite du tableau de bord : en-tête du voyage, barre d'onglets et contenu de l'onglet actif. */
 export default function TripWorkspace() {
@@ -139,17 +145,22 @@ export default function TripWorkspace() {
         </div>
       )}
 
-      {/* 2. DESTINATION VOTING TAB */}
-      {activeTab === "voting" && <VotingTab />}
+      {/* Onglets chargés à la demande : un seul est monté à la fois, sous Suspense */}
+      {activeTab !== "calendar" && (
+        <Suspense fallback={<LoadingFallback />}>
+          {/* 2. DESTINATION VOTING TAB */}
+          {activeTab === "voting" && <VotingTab />}
 
-      {/* 3. INTEGRATED DISCUSSION AND MESSAGING BOARD TAB */}
-      {activeTab === "chat" && <ChatTab />}
+          {/* 3. INTEGRATED DISCUSSION AND MESSAGING BOARD TAB */}
+          {activeTab === "chat" && <ChatTab />}
 
-      {/* 4. SHARED PHOTO GALLERY & DOCUMENTS SANDBOX TAB */}
-      {activeTab === "media" && <MediaTab />}
+          {/* 4. SHARED PHOTO GALLERY & DOCUMENTS SANDBOX TAB */}
+          {activeTab === "media" && <MediaTab />}
 
-      {/* 5. DYNAMIC MULTI-SOURCE ACTIVITY SUGGESTIONS & PROGRAM TAB */}
-      {activeTab === "itinerary" && <ItineraryTab />}
+          {/* 5. DYNAMIC MULTI-SOURCE ACTIVITY SUGGESTIONS & PROGRAM TAB */}
+          {activeTab === "itinerary" && <ItineraryTab />}
+        </Suspense>
+      )}
 
     </div>
   );

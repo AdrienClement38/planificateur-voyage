@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, lazy, Suspense } from "react";
 import { Trip, Member, ProposedDestination, ActivityProposal, ChatMessage, SharedDoc, SharedPhoto, ItineraryDay, Availability } from "./types";
 import { INITIAL_TRIPS, MOCK_MEMBERS } from "./data/mockTrips";
 import { useLocalStorage } from "./hooks/useLocalStorage";
@@ -15,11 +15,14 @@ import {
 } from "./domain/itinerary";
 import { TripContext, type TripStore } from "./store/TripContext";
 import LoginScreen from "./pages/LoginScreen";
-import CreateTripPage from "./pages/CreateTripPage";
-import AccountPage from "./pages/AccountPage";
 import AppHeader from "./components/AppHeader";
 import DashboardSidebar from "./features/DashboardSidebar";
 import TripWorkspace from "./features/TripWorkspace";
+import LoadingFallback from "./components/LoadingFallback";
+
+// Pages autonomes chargées à la demande (rarement ouvertes au démarrage).
+const CreateTripPage = lazy(() => import("./pages/CreateTripPage"));
+const AccountPage = lazy(() => import("./pages/AccountPage"));
 
 export default function App() {
   // Persistance localStorage + validation Zod (cf. useLocalStorage).
@@ -679,7 +682,11 @@ export default function App() {
   };
 
   // Décomposition du budget individuel (logique pure extraite dans domain/budget).
-  const budgetBreakdown = computeBudgetBreakdown(activeTrip);
+  // Mémoïsée : recalculée uniquement quand le voyage actif change.
+  const budgetBreakdown = useMemo(
+    () => computeBudgetBreakdown(activeTrip),
+    [activeTrip],
+  );
 
   const store: TripStore = {
     trips,
@@ -788,11 +795,13 @@ export default function App() {
         </div>
       )}
 
-        {/* STANDALONE CREATE TRIP INTERACTIVE PAGE */}
-        {activePage === "create-trip" && <CreateTripPage />}
-
-        {/* STANDALONE MON COMPTE & GROUPE INTERACTIVE PAGE */}
-        {activePage === "account" && <AccountPage />}
+        {/* PAGES AUTONOMES CHARGÉES À LA DEMANDE */}
+        {(activePage === "create-trip" || activePage === "account") && (
+          <Suspense fallback={<LoadingFallback />}>
+            {activePage === "create-trip" && <CreateTripPage />}
+            {activePage === "account" && <AccountPage />}
+          </Suspense>
+        )}
 
         {/* BOTTOM METADATA & DEPLOYMENT INFO */}
         <footer className="pt-4 pb-12 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-3 border-t border-slate-200">
