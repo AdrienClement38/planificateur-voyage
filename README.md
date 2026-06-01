@@ -59,11 +59,86 @@ Le tout avec une interface moderne, fluide, animée, et compatible avec un usage
 * **Front-end** : [React 19](https://react.dev/) avec configuration d'applications modernes rapides en [Vite](https://vitejs.dev/).
 * **Styling** : [Tailwind CSS v4](https://tailwindcss.com/) pour un design fluide, élégant et entièrement responsive (Mobile / Tablette / Desktop).
 * **Icônes** : [Lucide React](https://lucide.dev/) pour une sémiologie visuelle cohérente et épurée.
-* **State Management** : Hooks d'états réactifs synchronisés en temps réel avec persistance locale (`localStorage`).
+* **State Management** : store centralisé via React Context (`useTripStore`), persistance locale (`localStorage`) **validée par [Zod](https://zod.dev/)** au chargement.
 * **Type Safety** : Intégration stricte de [TypeScript](https://www.typescriptlang.org/) pour la robustesse logicielle et la détection des erreurs à la compilation.
+* **Qualité** : logique métier pure isolée dans `src/domain/`, tests [Vitest](https://vitest.dev/), [ESLint](https://eslint.org/) + [Prettier](https://prettier.io/), CI GitHub Actions.
+* **Mobile** : [PWA](https://web.dev/explore/progressive-web-apps) installable (offline réel) + [Capacitor](https://capacitorjs.com/) pour la publication sur les stores.
 
 ### 🤖 Suggestions d'activités
 
 Le serveur ([server.ts](server.ts)) génère les suggestions d'activités en **mode hors-ligne déterministe** par défaut : une base curatée de destinations (Paris, Rome, Barcelone, Lisbonne, Tokyo, Londres, New York, Venise…) complétée par un générateur procédural pour toute ville inconnue, en simulant trois sources (GetYourGuide, Airbnb Expériences, Google Activités). Aucune clé d'API n'est requise — l'app fonctionne entièrement sans réseau.
 
 Une couche d'enrichissement par **IA générative (Gemini)** est prévue de façon **optionnelle** : si la variable `GEMINI_API_KEY` est fournie, le serveur pourra affiner les suggestions ; sinon il se rabat proprement sur le mode hors-ligne. (Dégradation gracieuse.)
+
+### 🗂️ Structure du projet
+
+```
+src/
+├─ domain/      Logique métier pure, testée (budget, dates, itinéraire, activités)
+├─ lib/         api · id · schemas (Zod)
+├─ hooks/       useLocalStorage (persistance validée)
+├─ store/       TripContext — useTripStore() : état centralisé, typé
+├─ pages/       LoginScreen · CreateTripPage · AccountPage
+├─ features/    DashboardSidebar · TripWorkspace · onglets (Voting/Chat/Media/Itinerary)
+├─ components/  AppHeader · AvailabilityCalendar · OfflineIndicator · LoadingFallback
+└─ App.tsx      Fournit le store et assemble l'interface
+```
+
+Voir [CLAUDE.md](CLAUDE.md) pour les conventions de développement détaillées.
+
+---
+
+## 🚦 Développement
+
+```bash
+npm install
+npm run dev            # http://localhost:3000
+PORT=3002 npm run dev  # …ou sur un autre port
+```
+
+Qualité (exécutés aussi en CI sur chaque push) :
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm run lint        # ESLint
+npm test            # 19 tests Vitest (logique domain/)
+npm run build       # build web + serveur
+```
+
+---
+
+## 🚀 Déploiement
+
+### 🌐 Web — AlwaysData
+
+L'app web et l'API sont servies par le même serveur Node/Express.
+
+1. `npm run build` (produit `dist/` + `dist/server.cjs`).
+2. Déployer le dépôt sur AlwaysData (site **Node.js**).
+3. Commande de démarrage : `npm start` (lance `node dist/server.cjs`).
+4. AlwaysData fournit le port via `PORT` — le serveur le respecte automatiquement.
+5. (Optionnel) définir `GEMINI_API_KEY` pour activer l'enrichissement IA.
+
+L'app est aussi une **PWA** : installable depuis le navigateur (« Ajouter à
+l'écran d'accueil ») avec un vrai mode hors-ligne (service worker).
+
+### 📱 Mobile — Android (Capacitor / Play Store)
+
+L'app mobile réutilise **exactement le même code** : le build web est emballé
+dans une app native. Comme le bundle mobile est statique, il appelle l'API
+**à distance** → définir l'URL d'AlwaysData au moment du build :
+
+```bash
+# 1. Build web pointant vers l'API distante + synchronisation native
+VITE_API_BASE_URL="https://VOTRE-APP.alwaysdata.net" npm run build:mobile
+
+# 2. Ouvrir le projet Android (nécessite Android Studio)
+npm run cap:open:android
+```
+
+Puis, depuis Android Studio : générer l'APK/AAB signé et le publier sur le
+Play Store. À chaque modification du code : relancer `npm run build:mobile`.
+
+> **iOS** : nécessite un Mac (ou un service de build cloud) pour compiler et
+> publier sur l'App Store. La même base de code s'y appliquera via
+> `npx cap add ios`.
