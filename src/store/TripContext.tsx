@@ -34,8 +34,10 @@ export interface TripStore {
   members: Member[];
   setMembers: Dispatch<SetStateAction<Member[]>>;
   activeTrip: Trip;
+  selectedTripId: string;
   currentMember: Member;
   currentMemberId: string;
+  setCurrentMemberId: Dispatch<SetStateAction<string>>;
   isOffline: boolean;
   setIsOffline: Dispatch<SetStateAction<boolean>>;
   activePage: ActivePage;
