@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Co-Tripper">
+  <rect width="512" height="512" rx="112" fill="#4f46e5"/>
+  <!-- Pagaie / canoë stylisé en blanc, zone de sécurité respectée pour le maskable -->
+  <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M120 300 q136 96 272 0" />
+    <path d="M120 300 q136 -40 272 0" />
+    <line x1="256" y1="120" x2="256" y2="300" />
+    <path d="M210 150 q46 -44 92 0" />
+  </g>
+  <circle cx="256" cy="392" r="20" fill="#ffffff"/>
+</svg>
