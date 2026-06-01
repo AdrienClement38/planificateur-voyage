@@ -17,75 +17,9 @@ import { TripContext, type TripStore } from "./store/TripContext";
 import LoginScreen from "./pages/LoginScreen";
 import CreateTripPage from "./pages/CreateTripPage";
 import AccountPage from "./pages/AccountPage";
-import VotingTab from "./features/VotingTab";
-import ChatTab from "./features/ChatTab";
-import MediaTab from "./features/MediaTab";
-import ItineraryTab from "./features/ItineraryTab";
 import AppHeader from "./components/AppHeader";
 import DashboardSidebar from "./features/DashboardSidebar";
-import OfflineIndicator from "./components/OfflineIndicator";
-import AvailabilityCalendar from "./components/AvailabilityCalendar";
-import { 
-  Plus, 
-  MapPin, 
-  ThumbsUp, 
-  Users, 
-  MessageSquare, 
-  FileText, 
-  Image as ImageIcon, 
-  Sparkles, 
-  DollarSign, 
-  ArrowRight, 
-  Download, 
-  Trash2, 
-  Check, 
-  Send, 
-  AlertCircle,
-  Clock,
-  Briefcase,
-  Plane,
-  Home,
-  ExternalLink,
-  ChevronRight,
-  Info,
-  LogOut,
-  User,
-  Settings,
-  ChevronDown
-} from "lucide-react";
-
-const LOCAL_RECOMMENDATIONS: Record<string, {name: string, description: string, cost: number, category: string}[]> = {
-  "barcelone": [
-    { name: "Visite guidée du Parc Güell 🦎", description: "Le chef-d'œuvre coloré de Gaudi avec une vue panoramique imprenable sur la Méditerranée.", cost: 10, category: "Visite" },
-    { name: "Coucher de soleil aux Bunkers del Carmel 🌅", description: "Le plus beau point de vue à 360° sur Barcelone, idéal pour un pique-nique crépusculaire.", cost: 0, category: "Nature" },
-    { name: "Dégustation culinaire au Marché de Santa Caterina 🧀", description: "Moins touristique que la Boqueria, plein d'étals bios et de tapas authentiques.", cost: 18, category: "Gastronomie" },
-    { name: "Spectacle de Flamenco traditionnel au Born 💃", description: "Immersion vibrante dans l'art andalou avec boisson fraîche incluse.", cost: 30, category: "Loisir" }
-  ],
-  "rome": [
-    { name: "Visite coupe-file du Colisée et Forum Romain 🏛️", description: "Plongez dans l'arène impériale et marchez sur les traces des gladiateurs de l'empire.", cost: 24, category: "Culture" },
-    { name: "Atelier de fabrication de pâtes fraîches & Gelato 🍝", description: "Apprenez les secrets de fabrication d'un chef italien dans le quartier bohème de Trastevere.", cost: 42, category: "Gastronomie" },
-    { name: "Balade nocturne des fontaines romantiques ⛲", description: "Découvrez la Fontaine de Trevi, la Piazza Navona et le Panthéon éclairés majestueusement de nuit.", cost: 0, category: "Visite" },
-    { name: "Pique-nique champêtre à la Villa Borghese 🌳", description: "Louez des barques sur le lac artificiel et dégustez du fromage Pecorino sous les pins parasols.", cost: 10, category: "Nature" }
-  ],
-  "paris": [
-    { name: "Ascension nocturne de l'Arc de Triomphe 🗼", description: "Le meilleur belvédère parisien pour admirer l'avenue des Champs-Élysées et la Tour Eiffel s'illuminer.", cost: 13, category: "Visite" },
-    { name: "Flânerie gourmande et street-art à Belleville 🎨", description: "Quartier cosmopolite riche en boulangeries artisanales et galeries d'art expressves en plein air.", cost: 0, category: "Gastronomie" },
-    { name: "Bateau-Mouche romantique sur la Seine ⛵", description: "Un moment féerique au fil de l'eau pour admirer les ponts et monuments illuminés.", cost: 15, category: "Loisir" },
-    { name: "Exploration des catacombes historiques de la Cité 💀", description: "Galères souterraines fascinantes abritant l'histoire mystique de Paris.", cost: 29, category: "Culture" }
-  ],
-  "lisbonne": [
-    { name: "Dégustation des Pasteis de Belém chaudes 🧁", description: "La recette culinaire ultra-secrète de 1837 dans la boutique historique aux azulejos de faïence.", cost: 5, category: "Gastronomie" },
-    { name: "Balade guidée en Tramway historique 28 🚃", description: "Sillonnez les collines escarpées de l'Alfama à bord d'un wagon en bois d'époque.", cost: 3, category: "Visite" },
-    { name: "Coucher de soleil acoustique au Miradouro da Senhora do Monte 🌅", description: "Le point de vue imprenable le plus romantique avec concerts à la guitare sous le ciel étoilé.", cost: 0, category: "Loisir" },
-    { name: "Excursion magique vers les châteaux de Sintra 🏰", description: "Explorez le Palais national de Pena, son architecture féerique fleurie et ses jardins exotiques.", cost: 20, category: "Culture" }
-  ],
-  "tokyo": [
-    { name: "Coucher de soleil vertigineux au Shibuya Sky 🏙️", description: "Terrasse ouverte au 47ème étage offrant une vue sensationnelle sur le carrefour mythique et le Mont Fuji.", cost: 18, category: "Visite" },
-    { name: "Dîner authentique d'Okonomiyaki à Shimokitazawa 🥢", description: "Galettes japonaises traditionnelles savoureuses cuites sur plaques chauffantes devant vous.", cost: 22, category: "Gastronomie" },
-    { name: "Visite interactive sensorielle teamLab Planets 🔮", description: "Marcher pieds nus dans l'eau et explorer une œuvre d'art numérique de lumières infinies.", cost: 26, category: "Culture" },
-    { name: "Soirée rétro ludique au Golden Gai de Shinjuku 🍺", description: "Plus de 200 micro-bars en bois blottis dans d'étroites ruelles d'après-guerre.", cost: 20, category: "Loisir" }
-  ]
-};
+import TripWorkspace from "./features/TripWorkspace";
 
 export default function App() {
   // Persistance localStorage + validation Zod (cf. useLocalStorage).
@@ -540,52 +474,6 @@ export default function App() {
     }, 450);
   };
 
-  // Add one of the offline curated recommendations to a specific day of the itinerary
-  const handleAddRecommendationToItinerary = (rec: {name: string, description: string, cost: number, category: string}, chosenDay: number) => {
-    const emptyItinerary: ItineraryDay[] = activeTrip.itinerary && activeTrip.itinerary.length > 0
-      ? [...activeTrip.itinerary]
-      : buildEmptyItinerary(activeTrip.targetDays, activeTrip.selectedDestination || "votre destination");
-
-    const newEv = {
-      id: uid("ev-rec"),
-      time: "11:30",
-      description: `${rec.name} — ${rec.description}`,
-      cost: rec.cost
-    };
-
-    const updatedItinerary = emptyItinerary.map((day) => {
-      if (day.day === chosenDay) {
-        return {
-          ...day,
-          events: [...day.events, newEv]
-        };
-      }
-      return day;
-    });
-
-    const isAlreadyProposed = activeTrip.activities.some(act => act.name === rec.name);
-    const updatedActivities = isAlreadyProposed 
-      ? activeTrip.activities 
-      : [
-          ...activeTrip.activities,
-          {
-            id: uid("act-rec"),
-            name: rec.name,
-            description: rec.description,
-            cost: rec.cost,
-            category: rec.category,
-            proposedBy: currentMember.name,
-            votes: [currentMember.id]
-          }
-        ];
-
-    handleUpdateTrip({
-      ...activeTrip,
-      activities: updatedActivities,
-      itinerary: updatedItinerary
-    });
-  };
-
   // Push new chat message
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
@@ -860,7 +748,6 @@ export default function App() {
     handleToggleActivityVote,
     handleScheduleActivity,
     handleAutoPlanFromVotes,
-    handleAddRecommendationToItinerary,
     handleSendChat,
     handleDrag,
     handleDrop,
@@ -897,140 +784,7 @@ export default function App() {
             <DashboardSidebar />
 
             {/* COLUMN MIDDLE/RIGHT: INTERACTIVE BENTO BLOCKS (8 COLS) */}
-            <div className="lg:col-span-8 space-y-5">
-
-              {/* CHOSEN ADVENTURE COMPACT HEADER BANNER */}
-              <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fadeIn text-left">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/20 rounded-full blur-2xl pointer-events-none translate-x-12 -translate-y-12"></div>
-                
-                <div className="relative z-10 space-y-1.5">
-                  <span className="text-[9.5px] font-extrabold uppercase bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md">
-                    📂 Voyage Sélectionné
-                  </span>
-                  <h2 className="text-xl font-bold font-display text-slate-800 tracking-tight pt-1.5">
-                    {activeTrip.name}
-                  </h2>
-                  <p className="text-xs text-slate-500 italic max-w-xl">
-                    "{activeTrip.description}"
-                  </p>
-                </div>
-
-                <div className="relative z-10 shrink-0 flex items-center gap-3">
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center shrink-0 min-w-[70px]">
-                    <span className="block text-[8px] uppercase font-bold text-slate-400">DURÉE</span>
-                    <span className="text-xs font-black text-slate-700">{activeTrip.targetDays} jours</span>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center shrink-0 min-w-[75px]">
-                    <span className="block text-[8px] uppercase font-bold text-slate-400">SERVICES</span>
-                    <span className="text-xs font-black text-indigo-600">{activeTrip.budgetType}</span>
-                  </div>
-                </div>
-              </div>
-            
-            {/* NAVIGATION TABS BAR AT THE TOP OF THE COLUMN */}
-            <div className="bg-white rounded-2xl p-1.5 border border-slate-200/80 shadow-xs flex flex-wrap gap-1">
-              <button
-                onClick={() => setActiveTab("calendar")}
-                className={`flex-1 min-w-[124px] flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold rounded-xl transition duration-200 select-none cursor-pointer ${
-                  activeTab === "calendar"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                <Clock className="w-4 h-4 shrink-0" />
-                <span>Disponibilités</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("voting")}
-                className={`flex-1 min-w-[124px] flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold rounded-xl transition duration-200 select-none cursor-pointer ${
-                  activeTab === "voting"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                <MapPin className="w-4 h-4 shrink-0" />
-                <span>Destinations</span>
-                {activeTrip.destinations.length > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === "voting" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
-                  }`}>
-                    {activeTrip.destinations.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab("itinerary")}
-                className={`flex-1 min-w-[124px] flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold rounded-xl transition duration-200 select-none cursor-pointer ${
-                  activeTab === "itinerary"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                <Sparkles className="w-4 h-4 shrink-0" />
-                <span>Programme & Suggestions</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("chat")}
-                className={`flex-1 min-w-[124px] flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold rounded-xl transition duration-200 select-none cursor-pointer ${
-                  activeTab === "chat"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                <MessageSquare className="w-4 h-4 shrink-0" />
-                <span>Messagerie</span>
-                {activeTrip.messages.length > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === "chat" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
-                  }`}>
-                    {activeTrip.messages.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab("media")}
-                className={`flex-1 min-w-[124px] flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold rounded-xl transition duration-200 select-none cursor-pointer ${
-                  activeTab === "media"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                <FileText className="w-4 h-4 shrink-0" />
-                <span>Partages ({activeTrip.documents.length + activeTrip.photos.length})</span>
-              </button>
-            </div>
-
-            {/* TAB CONTAINER: REACTIVE MOUNTING OF INDIVIDUAL COMPONENTS */}
-
-            {/* 1. CALENDAR TAB */}
-            {activeTab === "calendar" && (
-              <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs relative animate-fadeIn">
-                <AvailabilityCalendar 
-                  trip={activeTrip} 
-                  currentMember={currentMember} 
-                  isOffline={isOffline} 
-                  onUpdateTrip={handleUpdateTrip}
-                />
-              </div>
-            )}
-
-            {/* 2. DESTINATION VOTING TAB */}
-            {activeTab === "voting" && <VotingTab />}
-
-            {/* 3. INTEGRATED DISCUSSION AND MESSAGING BOARD TAB */}
-            {activeTab === "chat" && <ChatTab />}
-
-            {/* 4. SHARED PHOTO GALLERY & DOCUMENTS SANDBOX TAB */}
-            {activeTab === "media" && <MediaTab />}
-
-            {/* 5. DYNAMIC MULTI-SOURCE ACTIVITY SUGGESTIONS & PROGRAM TAB */}
-            {activeTab === "itinerary" && <ItineraryTab />}
-
-          </div>
+            <TripWorkspace />
         </div>
       )}
 

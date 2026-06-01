@@ -14,14 +14,6 @@ export type ActivePage = "dashboard" | "account" | "create-trip";
 export type ActiveTab = "calendar" | "voting" | "itinerary" | "chat" | "media";
 export type ActivityFilter = "all" | "gyg" | "airbnb" | "google";
 
-/** Recommandation curatée ajoutable à l'itinéraire. */
-export interface Recommendation {
-  name: string;
-  description: string;
-  cost: number;
-  category: string;
-}
-
 /**
  * Contrat exposé par le store de l'application aux composants de l'UI.
  *
@@ -114,10 +106,6 @@ export interface TripStore {
     timeStr?: string,
   ) => void;
   handleAutoPlanFromVotes: () => void;
-  handleAddRecommendationToItinerary: (
-    rec: Recommendation,
-    chosenDay: number,
-  ) => void;
   handleSendChat: (e: FormEvent) => void;
   handleDrag: (e: DragEvent) => void;
   handleDrop: (e: DragEvent) => void;
