@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Member, Availability, Trip } from "../types";
 import { Calendar, Plus, Trash2, CheckCircle2, AlertTriangle, HelpCircle } from "lucide-react";
+import { uid } from "../lib/id";
 
 interface AvailabilityCalendarProps {
   trip: Trip;
@@ -34,7 +35,7 @@ export default function AvailabilityCalendar({
     }
 
     const newAvail: Availability = {
-      id: "avail-" + Date.now(),
+      id: uid("avail"),
       memberId: currentMember.id,
       start: startDate,
       end: endDate,

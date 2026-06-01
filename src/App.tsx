@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Trip, Member, ProposedDestination, ActivityProposal, ChatMessage, SharedDoc, SharedPhoto, ItineraryDay, Availability } from "./types";
 import { INITIAL_TRIPS, MOCK_MEMBERS } from "./data/mockTrips";
+import { useLocalStorage } from "./hooks/useLocalStorage";
+import { tripsSchema, membersSchema } from "./lib/schemas";
+import { uid } from "./lib/id";
+import { suggestActivities } from "./lib/api";
 import OfflineIndicator from "./components/OfflineIndicator";
 import AvailabilityCalendar from "./components/AvailabilityCalendar";
 import { 
@@ -66,18 +70,12 @@ const LOCAL_RECOMMENDATIONS: Record<string, {name: string, description: string, 
 };
 
 export default function App() {
-  // Persistence using localstorage to handle offline resiliency
-  const [trips, setTrips] = useState<Trip[]>(() => {
-    const saved = localStorage.getItem("voyage_group_trips");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse LocalStorage trips, returning mocks", e);
-      }
-    }
-    return INITIAL_TRIPS;
-  });
+  // Persistance localStorage + validation Zod (cf. useLocalStorage).
+  const [trips, setTrips] = useLocalStorage<Trip[]>(
+    "voyage_group_trips",
+    INITIAL_TRIPS,
+    tripsSchema,
+  );
 
   const [selectedTripId, setSelectedTripId] = useState<string>(() => {
     return trips[0]?.id || "trip-barcelona";
@@ -86,37 +84,26 @@ export default function App() {
   const [currentMemberId, setCurrentMemberId] = useState<string>("m1"); // Adrien by default
   const [isOffline, setIsOffline] = useState<boolean>(false);
 
-  // Dynamic persistent simulated members state for Account Management
-  const [members, setMembers] = useState<Member[]>(() => {
-    const saved = localStorage.getItem("voyage_group_members");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse LocalStorage members", e);
-      }
-    }
-    return MOCK_MEMBERS;
-  });
+  // Membres simulés persistés (gestion de compte).
+  const [members, setMembers] = useLocalStorage<Member[]>(
+    "voyage_group_members",
+    MOCK_MEMBERS,
+    membersSchema,
+  );
 
-  useEffect(() => {
-    localStorage.setItem("voyage_group_members", JSON.stringify(members));
-  }, [members]);
-
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem("voyage_app_logged_in") !== "false";
-  });
+  const [isLoggedIn, setIsLoggedIn] = useLocalStorage<boolean>(
+    "voyage_app_logged_in",
+    true,
+  );
   const [activePage, setActivePage] = useState<"dashboard" | "account" | "create-trip">("dashboard");
 
   const handleLogout = () => {
     setIsLoggedIn(false);
-    localStorage.setItem("voyage_app_logged_in", "false");
   };
 
   const handleLoginAs = (memberId: string) => {
     setCurrentMemberId(memberId);
     setIsLoggedIn(true);
-    localStorage.setItem("voyage_app_logged_in", "true");
     setActivePage("dashboard");
   };
 
@@ -154,18 +141,13 @@ export default function App() {
   const [newProfileAvatar, setNewProfileAvatar] = useState("🧗"); // Emoji preset
   const [inviteEmailInput, setInviteEmailInput] = useState("");
 
-  // Sync to localstorage
-  useEffect(() => {
-    localStorage.setItem("voyage_group_trips", JSON.stringify(trips));
-  }, [trips]);
-
   // Find the current trip
   const activeTrip = trips.find((t) => t.id === selectedTripId) || trips[0];
   const currentMember = members.find((m) => m.id === currentMemberId) || members[0];
 
   const handleCreateProfileAndJoin = (name: string, avatar: string) => {
     if (!name.trim()) return;
-    const newMemberId = "m-" + Date.now();
+    const newMemberId = uid("m");
     
     // Choose a nice adventure SVG seed avatar if possible, or support preset emojis
     const chosenAvatarUrl = avatar.length > 2 
@@ -207,7 +189,7 @@ export default function App() {
     const chosenName = friendName || names[Math.floor(Math.random() * names.length)];
     const chosenAvatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(chosenName)}`;
     
-    const newFriendId = "m-sim-" + Date.now();
+    const newFriendId = uid("m-sim");
     const newFriend: Member = {
       id: newFriendId,
       name: chosenName,
@@ -224,7 +206,7 @@ export default function App() {
     const simulatedEnd = `2026-07-${26 + startOffset}`;
     
     const newAvail: Availability = {
-      id: "avail-sim-" + Date.now(),
+      id: uid("avail-sim"),
       memberId: newFriendId,
       start: simulatedStart,
       end: simulatedEnd
@@ -239,7 +221,7 @@ export default function App() {
 
     // Send a message from this simulated friend in the discussion group
     const welcomeMsg: ChatMessage = {
-      id: "wel-sim-" + Date.now(),
+      id: uid("wel-sim"),
       senderId: newFriendId,
       senderName: chosenName,
       senderAvatar: chosenAvatarUrl,
@@ -292,7 +274,7 @@ export default function App() {
     if (!newTripName.trim()) return;
 
     const newTrip: Trip = {
-      id: "trip-" + Date.now(),
+      id: uid("trip"),
       name: newTripName,
       description: "Nouveau projet de voyage collectif créé en mode résilient.",
       selectedDestination: "",
@@ -338,7 +320,7 @@ export default function App() {
     }
 
     const proposed: ProposedDestination = {
-      id: "dest-" + Date.now(),
+      id: uid("dest"),
       name: newDestName,
       proposedBy: currentMember.name,
       votes: [currentMember.id], // initial self-vote
@@ -463,26 +445,19 @@ export default function App() {
     }
 
     try {
-      const response = await fetch("/api/suggest-activities", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          destination: activeTrip.selectedDestination,
-          days: activeTrip.targetDays,
-          budgetType: activeTrip.budgetType,
-          adults: adults,
-          checkin: checkin,
-          checkout: checkout
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Impossible de joindre le serveur de suggestions.");
-      }
-
-      const data = await response.json();
+      const data = (await suggestActivities({
+        destination: activeTrip.selectedDestination,
+        days: activeTrip.targetDays,
+        budgetType: activeTrip.budgetType,
+        adults,
+        checkin,
+        checkout,
+      })) as {
+        activities?: ActivityProposal[];
+        itinerary?: ItineraryDay[];
+        averageLodgingCostPerNight?: number;
+        averageLocalTransportCostPerDay?: number;
+      };
       
       const existingActivities = activeTrip.activities || [];
       const incomingActivities = data.activities || [];
@@ -547,7 +522,7 @@ export default function App() {
         }
 
         return {
-          id: `act-gen-fallback-${Date.now()}-${i}`,
+          id: uid(`act-gen-fallback-${i}`),
           name: a.name,
           description: a.description,
           cost: a.cost,
@@ -618,7 +593,7 @@ export default function App() {
         }));
 
     const newEv = {
-      id: `ev-sched-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: uid("ev-sched"),
       time: timeStr,
       description: `${act.name}${act.source ? ` [${act.source}]` : ""}`,
       cost: act.cost
@@ -810,7 +785,7 @@ export default function App() {
         }));
 
     const newEv = {
-      id: `ev-rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: uid("ev-rec"),
       time: "11:30",
       description: `${rec.name} — ${rec.description}`,
       cost: rec.cost
@@ -832,7 +807,7 @@ export default function App() {
       : [
           ...activeTrip.activities,
           {
-            id: `act-rec-${Date.now()}`,
+            id: uid("act-rec"),
             name: rec.name,
             description: rec.description,
             cost: rec.cost,
@@ -855,7 +830,7 @@ export default function App() {
     if (!chatText.trim()) return;
 
     const newMsg: ChatMessage = {
-      id: "msg-" + Date.now(),
+      id: uid("msg"),
       senderId: currentMember.id,
       senderName: currentMember.name,
       senderAvatar: currentMember.avatar,
@@ -899,7 +874,7 @@ export default function App() {
       : "120 KB";
 
     const newDoc: SharedDoc = {
-      id: "doc-" + Date.now(),
+      id: uid("doc"),
       name: name,
       type: name.endsWith(".pdf") ? "pdf" : name.endsWith(".png") || name.endsWith(".jpg") ? "image" : "doc",
       uploadedBy: currentMember.name,
@@ -933,7 +908,7 @@ export default function App() {
     const caption = photoCaptionInput.trim() || "Un magnifique spot repéré pour le séjour !";
 
     const newPhoto: SharedPhoto = {
-      id: "photo-" + Date.now(),
+      id: uid("photo"),
       url: url,
       caption: caption,
       uploadedBy: currentMember.name,
@@ -955,7 +930,7 @@ export default function App() {
     if (!manualEventDesc.trim()) return;
 
     const newEvent = {
-      id: "ev-manual-" + Date.now(),
+      id: uid("ev-manual"),
       time: manualEventTime,
       description: manualEventDesc,
       cost: Number(manualEventCost) || 0,
@@ -2686,7 +2661,7 @@ export default function App() {
                     const randomAvatar = randomAvatars[Math.floor(Math.random() * randomAvatars.length)];
 
                     const newM: Member = {
-                      id: "m" + Date.now(),
+                      id: uid("m"),
                       name: nameVal,
                       avatar: randomAvatar,
                     };

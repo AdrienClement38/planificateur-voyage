@@ -56,8 +56,14 @@ Le tout avec une interface moderne, fluide, animée, et compatible avec un usage
 
 ## 🛠️ Architecture Technique
 
-* **Front-end** : [React 18+](https://react.dev/) avec configuration d'applications modernes rapides en [Vite](https://vitejs.dev/).
+* **Front-end** : [React 19](https://react.dev/) avec configuration d'applications modernes rapides en [Vite](https://vitejs.dev/).
 * **Styling** : [Tailwind CSS v4](https://tailwindcss.com/) pour un design fluide, élégant et entièrement responsive (Mobile / Tablette / Desktop).
 * **Icônes** : [Lucide React](https://lucide.dev/) pour une sémiologie visuelle cohérente et épurée.
 * **State Management** : Hooks d'états réactifs synchronisés en temps réel avec persistance locale (`localStorage`).
-* **Type Safety** : Intégration stricte de [TypeScript](https://www.typescriptlang.org/) garantissant la robustesse logicielle et l'absence totale de bugs à la compilation.
+* **Type Safety** : Intégration stricte de [TypeScript](https://www.typescriptlang.org/) pour la robustesse logicielle et la détection des erreurs à la compilation.
+
+### 🤖 Suggestions d'activités
+
+Le serveur ([server.ts](server.ts)) génère les suggestions d'activités en **mode hors-ligne déterministe** par défaut : une base curatée de destinations (Paris, Rome, Barcelone, Lisbonne, Tokyo, Londres, New York, Venise…) complétée par un générateur procédural pour toute ville inconnue, en simulant trois sources (GetYourGuide, Airbnb Expériences, Google Activités). Aucune clé d'API n'est requise — l'app fonctionne entièrement sans réseau.
+
+Une couche d'enrichissement par **IA générative (Gemini)** est prévue de façon **optionnelle** : si la variable `GEMINI_API_KEY` est fournie, le serveur pourra affiner les suggestions ; sinon il se rabat proprement sur le mode hors-ligne. (Dégradation gracieuse.)
