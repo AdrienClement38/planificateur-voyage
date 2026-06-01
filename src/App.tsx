@@ -5,6 +5,14 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 import { tripsSchema, membersSchema } from "./lib/schemas";
 import { uid } from "./lib/id";
 import { suggestActivities } from "./lib/api";
+import { computeBudgetBreakdown } from "./domain/budget";
+import { findBestTravelWindow } from "./domain/availability";
+import { mergeActivitiesByName, buildFallbackActivities } from "./domain/activities";
+import {
+  buildEmptyItinerary,
+  getMockDynamicItinerary,
+  buildAutoPlanItinerary,
+} from "./domain/itinerary";
 import OfflineIndicator from "./components/OfflineIndicator";
 import AvailabilityCalendar from "./components/AvailabilityCalendar";
 import { 
@@ -384,65 +392,10 @@ export default function App() {
     const adults = activeTrip.members ? activeTrip.members.length : 6;
     
     // Find ideal travel window for Airbnb check-in and check-out parameters
-    let checkin = "2026-07-20";
-    let checkout = "2026-07-26";
-    
-    if (activeTrip.availabilities && activeTrip.availabilities.length > 0) {
-      const dayCounts: { [dateStr: string]: string[] } = {};
-      activeTrip.availabilities.forEach((avail) => {
-        const start = new Date(avail.start);
-        const end = new Date(avail.end);
-        const current = new Date(start);
-        let count = 0;
-        while (current <= end && count < 60) {
-          const dateStr = current.toISOString().split("T")[0];
-          if (!dayCounts[dateStr]) dayCounts[dateStr] = [];
-          if (!dayCounts[dateStr].includes(avail.memberId)) {
-            dayCounts[dateStr].push(avail.memberId);
-          }
-          current.setDate(current.getDate() + 1);
-          count++;
-        }
-      });
-      const activeDates = Object.keys(dayCounts).sort();
-      if (activeDates.length > 0) {
-        const neededDays = activeTrip.targetDays || 4;
-        let bestScore = 0;
-        let bestRange: string[] = [];
-        for (let i = 0; i <= activeDates.length - neededDays; i++) {
-          const candidateStartDate = new Date(activeDates[i]);
-          const candidateRange: string[] = [];
-          let currentMembersIntersection: string[] | null = null;
-          let membersUnion = new Set<string>();
-          for (let offset = 0; offset < neededDays; offset++) {
-            const d = new Date(candidateStartDate);
-            d.setDate(d.getDate() + offset);
-            const dStr = d.toISOString().split("T")[0];
-            candidateRange.push(dStr);
-            const dayMembers = dayCounts[dStr] || [];
-            dayMembers.forEach(m => membersUnion.add(m));
-            if (currentMembersIntersection === null) {
-              currentMembersIntersection = [...dayMembers];
-            } else {
-              currentMembersIntersection = currentMembersIntersection.filter(m => dayMembers.includes(m));
-            }
-          }
-          const countIntersect = currentMembersIntersection ? currentMembersIntersection.length : 0;
-          const score = countIntersect * 1000 + membersUnion.size;
-          if (score > bestScore) {
-            bestScore = score;
-            bestRange = candidateRange;
-          }
-        }
-        if (bestRange.length > 0) {
-          checkin = bestRange[0];
-          checkout = bestRange[bestRange.length - 1];
-        } else {
-          checkin = activeTrip.availabilities[0].start;
-          checkout = activeTrip.availabilities[0].end;
-        }
-      }
-    }
+    const { checkin, checkout } = findBestTravelWindow(
+      activeTrip.availabilities,
+      activeTrip.targetDays,
+    );
 
     try {
       const data = (await suggestActivities({
@@ -459,19 +412,10 @@ export default function App() {
         averageLocalTransportCostPerDay?: number;
       };
       
-      const existingActivities = activeTrip.activities || [];
-      const incomingActivities = data.activities || [];
-      
-      // Merge with name-based deduplication
-      const mergedActivities = [...existingActivities];
-      incomingActivities.forEach((incoming: any) => {
-        const isDuplicate = existingActivities.some(
-          (existing) => existing.name.toLowerCase().trim() === incoming.name.toLowerCase().trim()
-        );
-        if (!isDuplicate) {
-          mergedActivities.push(incoming);
-        }
-      });
+      const mergedActivities = mergeActivitiesByName(
+        activeTrip.activities || [],
+        data.activities || [],
+      );
 
       // Do not overwrite itinerary events if the group has already scheduled anything
       const hasPlannedEvents = activeTrip.itinerary && activeTrip.itinerary.some(day => day.events && day.events.length > 0);
@@ -493,63 +437,23 @@ export default function App() {
         activeTrip.budgetType
       );
       
-      const existingActivities = activeTrip.activities || [];
-      const incomingActivities = mockResult.activities.map((a, i) => {
-        const isBarce = activeTrip.selectedDestination.toLowerCase().includes("barcelon");
-        let sourceVal: "GetYourGuide" | "Airbnb Expériences" | "Google Activités";
-        let proposedByVal = "";
-        let itemUrl = "";
-        
-        const cleanName = a.name.replace(/[^\w\sÀ-ÿ]/gi, '').trim();
-
-        if (i % 3 === 0) {
-          sourceVal = "GetYourGuide";
-          proposedByVal = "GetYourGuide 🎫";
-          itemUrl = isBarce && cleanName.toLowerCase().includes("sagrada")
-            ? "https://www.getyourguide.fr/sagrada-familia-l2699/"
-            : `https://www.getyourguide.fr/s/?q=${encodeURIComponent(activeTrip.selectedDestination + " " + cleanName)}`;
-        } else if (i % 3 === 1) {
-          sourceVal = "Airbnb Expériences";
-          proposedByVal = "Airbnb Expériences 🏠";
-          itemUrl = isBarce && cleanName.toLowerCase().includes("sagrada")
-            ? `https://www.airbnb.fr/experiences/4527793?adults=${adults}&checkin=${checkin}&checkout=${checkout}&location=Barcelone%2C%20Espagne&currentTab=experience_tab&federatedSearchId=cdeb7f58-95c2-44dc-b657-1c2ca55ff964&sectionId=51d71af4-1887-4b5b-bda5-e5a52e26d961`
-            : `https://www.airbnb.fr/s/${encodeURIComponent(activeTrip.selectedDestination)}/experiences?query=${encodeURIComponent(cleanName)}&adults=${adults}&checkin=${checkin}&checkout=${checkout}&refinement_paths%5B%5D=%2Fexperiences`;
-        } else {
-          sourceVal = "Google Activités";
-          proposedByVal = "Google Activités ✈️";
-          const query = `Activités à découvrir à ${activeTrip.selectedDestination} ${cleanName}`;
-          itemUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&sa=X&sqi=2&bih=695&biw=1536&dpr=1.25#ttdcs=EAE`;
-        }
-
-        return {
-          id: uid(`act-gen-fallback-${i}`),
-          name: a.name,
-          description: a.description,
-          cost: a.cost,
-          category: a.category,
-          votes: [currentMemberId],
-          source: sourceVal,
-          proposedBy: proposedByVal,
-          bookingUrl: itemUrl
-        };
+      const fallbackActivities = buildFallbackActivities(mockResult.activities, {
+        destination: activeTrip.selectedDestination,
+        adults,
+        checkin,
+        checkout,
+        memberId: currentMemberId,
       });
-
-      const mergedActivities = [...existingActivities];
-      incomingActivities.forEach((incoming: any) => {
-        const isDuplicate = existingActivities.some(
-          (existing) => existing.name.toLowerCase().trim() === incoming.name.toLowerCase().trim()
-        );
-        if (!isDuplicate) {
-          mergedActivities.push(incoming);
-        }
-      });
+      const mergedActivities = mergeActivitiesByName(
+        activeTrip.activities || [],
+        fallbackActivities,
+      );
 
       const hasPlannedEvents = activeTrip.itinerary && activeTrip.itinerary.some(day => day.events && day.events.length > 0);
-      const emptyDays = Array.from({ length: activeTrip.targetDays }).map((_, idx) => ({
-        day: idx + 1,
-        title: `Jour ${idx + 1} : Exploration de ${activeTrip.selectedDestination}`,
-        events: []
-      }));
+      const emptyDays = buildEmptyItinerary(
+        activeTrip.targetDays,
+        activeTrip.selectedDestination,
+      );
       const finalItinerary = hasPlannedEvents ? activeTrip.itinerary : emptyDays;
 
       handleUpdateTrip({
@@ -584,13 +488,9 @@ export default function App() {
 
   // Schedule/plan a custom activity or selected suggestion to a specific day of the itinerary
   const handleScheduleActivity = (act: ActivityProposal, dayNum: number, timeStr = "10:00") => {
-    const emptyItinerary = activeTrip.itinerary && activeTrip.itinerary.length > 0 
+    const emptyItinerary = activeTrip.itinerary && activeTrip.itinerary.length > 0
       ? [...activeTrip.itinerary]
-      : Array.from({ length: activeTrip.targetDays }).map((_, idx) => ({
-          day: idx + 1,
-          title: `Jour ${idx + 1} : Exploration de ${activeTrip.selectedDestination || "la ville"}`,
-          events: []
-        }));
+      : buildEmptyItinerary(activeTrip.targetDays, activeTrip.selectedDestination || "la ville");
 
     const newEv = {
       id: uid("ev-sched"),
@@ -619,66 +519,7 @@ export default function App() {
   // Auto Plan itinerary based on voted activities
   const handleAutoPlanFromVotes = () => {
     setIsGenerating(true);
-    // Sort activities by votes descending
-    const sorted = [...activeTrip.activities].sort((a, b) => b.votes.length - a.votes.length);
-
-    const mealCostBreakfast = activeTrip.budgetType === "Économique" ? 5 : activeTrip.budgetType === "Luxe" ? 22 : 11;
-    const mealCostLunch = activeTrip.budgetType === "Économique" ? 9 : activeTrip.budgetType === "Luxe" ? 40 : 18;
-    const mealCostDinner = activeTrip.budgetType === "Économique" ? 14 : activeTrip.budgetType === "Luxe" ? 65 : 28;
-
-    const updatedItinerary = Array.from({ length: activeTrip.targetDays }).map((_, idx) => {
-      const d = idx + 1;
-      const dayEvents = [
-        {
-          id: `ev-auto-${d}-breakfast`,
-          time: "08:30",
-          description: "☕ Petit-déjeuner convivial en groupe près de l'hébergement",
-          cost: mealCostBreakfast
-        }
-      ];
-
-      // Grab first activity for morning
-      if (sorted.length > 0) {
-        const morningAct = sorted[(idx * 2) % sorted.length];
-        dayEvents.push({
-          id: `ev-auto-${d}-morning-${morningAct.id}`,
-          time: "10:00",
-          description: `${morningAct.name} — ${morningAct.description}`,
-          cost: morningAct.cost
-        });
-      }
-
-      dayEvents.push({
-        id: `ev-auto-${d}-lunch`,
-        time: "13:00",
-        description: "🍽️ Pause déjeuner saine - Dégustation locale",
-        cost: mealCostLunch
-      });
-
-      // Grab second activity for afternoon
-      if (sorted.length > 1) {
-        const afternoonAct = sorted[(idx * 2 + 1) % sorted.length];
-        dayEvents.push({
-          id: `ev-auto-${d}-afternoon-${afternoonAct.id}`,
-          time: "15:00",
-          description: `${afternoonAct.name} — ${afternoonAct.description}`,
-          cost: afternoonAct.cost
-        });
-      }
-
-      dayEvents.push({
-        id: `ev-auto-${d}-dinner`,
-        time: "19:30",
-        description: "🍷 Dîner de clôture de l'étape et repos bien mérité",
-        cost: mealCostDinner
-      });
-
-      return {
-        day: d,
-        title: `Jour ${d} : Sélection de l'équipe à ${activeTrip.selectedDestination}`,
-        events: dayEvents.sort((a, b) => a.time.localeCompare(b.time))
-      };
-    });
+    const updatedItinerary = buildAutoPlanItinerary(activeTrip);
 
     setTimeout(() => {
       handleUpdateTrip({
@@ -689,100 +530,11 @@ export default function App() {
     }, 450);
   };
 
-  // Intelligent Curated Travel Recipes without external paid keys
-  function getMockDynamicItinerary(destination: string, days: number, budgetType: string) {
-    const lowercaseDest = destination.toLowerCase();
-    
-    let activityThemes = [
-      { name: `Visite guidée historique de ${destination}`, description: "Découverte historique des monuments incontournables et trésors cachés.", cost: 20, category: "Visite" },
-      { name: "Expérience culinaire en groupe", description: "Bistrot typique, dégustation de spécialités et de planches à partager.", cost: 30, category: "Gastronomie" },
-      { name: "Balade nature et panorama d'exception", description: "Randonnée douce ou marche à pied vers les meilleurs panoramas.", cost: 0, category: "Nature" },
-      { name: "Jeu de piste ou escape game urbain", description: "Une activité connectée amusante pour renforcer la cohésion d'équipe.", cost: 15, category: "Loisir" },
-      { name: "Flânerie libre dans le quartier branché", description: "Boutiques conceptuelles, artisans d'art et café de spécialité.", cost: 10, category: "Shopping" }
-    ];
-
-    let lodgingCost = budgetType === "Économique" ? 35 : budgetType === "Luxe" ? 180 : 75;
-    let transportCost = budgetType === "Économique" ? 8 : budgetType === "Luxe" ? 35 : 14;
-
-    if (lowercaseDest.includes("rome") || lowercaseDest.includes("italie")) {
-      activityThemes = [
-        { name: "Visite coupe-file du Colisée de Rome", description: "Immersion unique dans l'histoire de l'arène impériale antique.", cost: 24, category: "Culture" },
-        { name: "Dégustation culinaire guidée à Trastevere", description: "Parcours gourmand dans le quartier bohème : pizza rouge, pâtes Cacio e Pepe et glaces artisanales.", cost: 35, category: "Gastronomie" },
-        { name: "Pique-nique champêtre à la Villa Borghese", description: "Un immense parc arboré idéal pour se détendre en barque.", cost: 10, category: "Nature" },
-        { name: "Soirée Piazza & Fontaines éclairées", description: "Découverte de la Fontaine de Trevi et du Panthéon de nuit.", cost: 0, category: "Visite" },
-        { name: "Visite des Musées du Vatican", description: "Admirez la somptueuse Chapelle Sixtine de Michel-Ange.", cost: 22, category: "Culture" }
-      ];
-      lodgingCost = budgetType === "Économique" ? 40 : budgetType === "Luxe" ? 220 : 85;
-    } else if (lowercaseDest.includes("paris") || lowercaseDest.includes("france")) {
-      activityThemes = [
-        { name: "Billets d'ascension de la mythique Tour Eiffel", description: "Prendre de la hauteur et observer toute la capitale au crépuscule.", cost: 28, category: "Culture" },
-        { name: "Croisière conviviale au fil de la Seine", description: "Au départ du Pont Neuf, une découverte fluide des monuments historiques.", cost: 15, category: "Visite" },
-        { name: "Bistro parisien et dégustation de vins", description: "Soirée gourmande dans un établissement typique du Marais.", cost: 35, category: "Gastronomie" },
-        { name: "Balade bohème à Montmartre", description: "Flânerie sur les marches de la Basilique du Sacré-Cœur.", cost: 0, category: "Visite" },
-        { name: "Visite nocturne du Musée du Louvre", description: "Découvrir la Joconde et la Vénus de Milo dans une ambiance feutrée.", cost: 17, category: "Culture" }
-      ];
-      lodgingCost = budgetType === "Économique" ? 45 : budgetType === "Luxe" ? 240 : 95;
-    } else if (lowercaseDest.includes("barcelone") || lowercaseDest.includes("espagne")) {
-      activityThemes = [
-        { name: "Entrées pour la basilique de la Sagrada Família", description: "L'insolite chef-d'œuvre inachevé de l'architecte Antoni Gaudí.", cost: 26, category: "Culture" },
-        { name: "Tapas festives au cœur du quartier El Born", description: "Poulpes, croquetas fondantes, charcuteries et patatas bravas épicées.", cost: 25, category: "Gastronomie" },
-        { name: "Journée Beach Volley et plage à Barceloneta", description: "Tournois amicaux sur la plage suivis d'un bain rafraîchissant.", cost: 0, category: "Nature" },
-        { name: "Coucher de soleil magique aux Bunkers del Carmel", description: "La plus spectaculaire vue à 360 degrés sur la cité catalane.", cost: 0, category: "Visite" },
-        { name: "Parcours architectural moderniste du Passeig de Gràcia", description: "Contempler la Casa Batlló et la Pedrera illuminées.", cost: 12, category: "Culture" }
-      ];
-      lodgingCost = budgetType === "Économique" ? 30 : budgetType === "Luxe" ? 190 : 65;
-    } else if (lowercaseDest.includes("tokyo") || lowercaseDest.includes("japon")) {
-      activityThemes = [
-        { name: "Ascension au Shibuya Sky Observatory", description: "Vue vertigineuse au dessus du carrefour le plus fréquenté au monde.", cost: 18, category: "Visite" },
-        { name: "Dîner Izakaya traditionnel en groupe", description: "Brochettes Yakitori, gyozas et boissons régionales dans une ruelle rétro.", cost: 30, category: "Gastronomie" },
-        { name: "Visite de l'exposition immersive teamLab Planets", description: "Un chef-d'œuvre technologique d'installations numériques d'art.", cost: 26, category: "Culture" },
-        { name: "Salles de Karaoké privatives à Shinjuku", description: "Chanter vos hymnes de groupe préférés dans un salon futuriste équipé.", cost: 15, category: "Loisir" },
-        { name: "Tour historique du temple bouddhiste Senso-ji", description: "Explorer le vieux quartier d'Asakusa et ses boutiques d'artisanat.", cost: 0, category: "Culture" }
-      ];
-      lodgingCost = budgetType === "Économique" ? 35 : budgetType === "Luxe" ? 250 : 80;
-    }
-
-    const costMultiplier = budgetType === "Économique" ? 0.6 : budgetType === "Luxe" ? 2.2 : 1.0;
-    const adjustedActivities = activityThemes.map(act => ({
-      ...act,
-      cost: Math.round(act.cost * costMultiplier)
-    }));
-
-    const itinerary: ItineraryDay[] = [];
-    for (let d = 1; d <= days; d++) {
-      const act1 = adjustedActivities[(d * 2 - 2) % adjustedActivities.length];
-      const act2 = adjustedActivities[(d * 2 - 1) % adjustedActivities.length];
-
-      itinerary.push({
-        day: d,
-        title: `Jour ${d} : Découverte majeure de ${destination}`,
-        events: [
-          { id: `gen-ev-${d}-1`, time: "09:00", description: `Petit-déjeuner gourmand local`, cost: budgetType === "Économique" ? 6 : budgetType === "Luxe" ? 22 : 11 },
-          { id: `gen-ev-${d}-2`, time: "10:30", description: `${act1.name} - ${act1.description}`, cost: act1.cost },
-          { id: `gen-ev-${d}-3`, time: "13:00", description: "Déjeuner convivial de spécialités locales", cost: budgetType === "Économique" ? 9 : budgetType === "Luxe" ? 38 : 18 },
-          { id: `gen-ev-${d}-4`, time: "15:00", description: `${act2.name} - ${act2.description}`, cost: act2.cost },
-          { id: `gen-ev-${d}-5`, time: "19:30", description: "Dîner festif et débriefing du groupe", cost: budgetType === "Économique" ? 14 : budgetType === "Luxe" ? 65 : 25 }
-        ]
-      });
-    }
-
-    return {
-      activities: adjustedActivities,
-      itinerary,
-      averageLodgingCostPerNight: lodgingCost,
-      averageLocalTransportCostPerDay: transportCost
-    };
-  }
-
   // Add one of the offline curated recommendations to a specific day of the itinerary
   const handleAddRecommendationToItinerary = (rec: {name: string, description: string, cost: number, category: string}, chosenDay: number) => {
-    const emptyItinerary: ItineraryDay[] = activeTrip.itinerary && activeTrip.itinerary.length > 0 
+    const emptyItinerary: ItineraryDay[] = activeTrip.itinerary && activeTrip.itinerary.length > 0
       ? [...activeTrip.itinerary]
-      : Array.from({ length: activeTrip.targetDays }).map((_, idx) => ({
-          day: idx + 1,
-          title: `Jour ${idx + 1} : Exploration de ${activeTrip.selectedDestination || "votre destination"}`,
-          events: []
-        }));
+      : buildEmptyItinerary(activeTrip.targetDays, activeTrip.selectedDestination || "votre destination");
 
     const newEv = {
       id: uid("ev-rec"),
@@ -1028,39 +780,8 @@ export default function App() {
     });
   };
 
-  // Calculation of collective budget breakdown of currently built itinerary and average numbers
-  const computeBudgetBreakdown = () => {
-    let activitiesCost = 0;
-    
-    // Sum events on itinerary
-    activeTrip.itinerary.forEach((day) => {
-      day.events.forEach((ev) => {
-        activitiesCost += ev.cost;
-      });
-    });
-
-    // Safe estimate lodging of days
-    const totalNights = Math.max(activeTrip.targetDays - 1, 1);
-    const totalLodging = totalNights * activeTrip.averageLodgingCostPerNight;
-
-    // Safe estimate local routes
-    const totalLocalTransport = activeTrip.targetDays * activeTrip.averageLocalTransportCostPerDay;
-
-    // Individual flight/transport to destination
-    const flightCost = activeTrip.externalTransportCost || 0;
-
-    const totalIndividual = activitiesCost + totalLodging + totalLocalTransport + flightCost;
-
-    return {
-      activitiesCost,
-      totalLodging,
-      totalLocalTransport,
-      flightCost,
-      totalIndividual,
-    };
-  };
-
-  const budgetBreakdown = computeBudgetBreakdown();
+  // Décomposition du budget individuel (logique pure extraite dans domain/budget).
+  const budgetBreakdown = computeBudgetBreakdown(activeTrip);
 
   if (!isLoggedIn) {
     return (
