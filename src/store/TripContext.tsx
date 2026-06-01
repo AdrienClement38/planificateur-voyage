@@ -32,6 +32,7 @@ export interface TripStore {
   // --- État partagé ---
   trips: Trip[];
   members: Member[];
+  setMembers: Dispatch<SetStateAction<Member[]>>;
   activeTrip: Trip;
   currentMember: Member;
   currentMemberId: string;
