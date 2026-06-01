@@ -1,0 +1,6 @@
+{
+  "name": "Planification de Voyage en Groupe",
+  "description": "Une application collaborative de planification de voyage : calendrier de disponibilités partagé, vote des destinations, suggestions d'activités par IA, itinéraire automatique, budget par participant, messagerie intégrée et mode hors-ligne.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
