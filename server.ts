@@ -1,6 +1,9 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+import authRouter from "./server/routes/auth";
+import { attachUser } from "./server/auth/middleware";
 
 dotenv.config();
 
@@ -21,6 +24,11 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Authentification : lecture des cookies, attache req.user, routes /api/auth.
+app.use(cookieParser());
+app.use(attachUser);
+app.use("/api/auth", authRouter);
 
 // Offline curated database of world destinations
 interface Activity {
