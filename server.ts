@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
-import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
@@ -470,6 +469,10 @@ app.post("/api/suggest-activities", async (req, res) => {
 // Start Express server and serve frontend
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    // Import dynamique : Vite n'est chargé qu'en dev, donc le bundle de prod
+    // (dist/server.cjs) ne dépend pas de Vite et tourne avec les seules
+    // dépendances de production (utile pour un hébergement léger type AlwaysData).
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
