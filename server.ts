@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
+import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import authRouter from "./server/routes/auth";
 import tripsRouter from "./server/routes/trips";
@@ -12,7 +13,14 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+// Derrière le reverse-proxy d'AlwaysData : IP cliente réelle + cookies Secure.
+app.set("trust proxy", 1);
+
+// En-têtes de sécurité (HSTS, X-Content-Type-Options, etc.). CSP désactivée
+// pour ne pas casser la SPA Vite/PWA — à durcir ultérieurement si besoin.
+app.use(helmet({ contentSecurityPolicy: false }));
+
+app.use(express.json({ limit: "1mb" }));
 
 // CORS : permet à l'app mobile (Capacitor, origine capacitor://localhost) et
 // aux PWA installées d'appeler l'API hébergée sur un autre domaine.

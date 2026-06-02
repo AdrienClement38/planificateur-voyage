@@ -1,8 +1,9 @@
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
+import rateLimit from "express-rate-limit";
 import { db } from "../db/client";
-import { users } from "../db/schema";
+import { users, tripMembers } from "../db/schema";
 import { hashPassword, verifyPassword } from "../auth/password";
 import {
   createSession,
@@ -10,8 +11,18 @@ import {
   SESSION_COOKIE,
 } from "../auth/session";
 import { requireAuth } from "../auth/middleware";
+import { loadTripAggregate } from "../services/trip-aggregate";
 
 const router = Router();
+
+// Anti-brute-force sur les routes sensibles (connexion / inscription).
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Trop de tentatives. Réessayez dans quelques minutes." },
+});
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -35,7 +46,7 @@ function setSessionCookie(res: Response, token: string, expiresAt: Date): void {
 }
 
 // POST /api/auth/signup
-router.post("/signup", async (req, res) => {
+router.post("/signup", authLimiter, async (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Champs invalides.", issues: parsed.error.issues });
@@ -63,7 +74,7 @@ router.post("/signup", async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post("/login", async (req, res) => {
+router.post("/login", authLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Champs invalides." });
@@ -116,6 +127,41 @@ router.patch("/me", requireAuth, async (req, res) => {
   res.json({
     user: { id: u.id, email: u.email, displayName: u.displayName, avatar: u.avatar },
   });
+});
+
+// GET /api/auth/export — portabilité RGPD : toutes les données de l'utilisateur
+router.get("/export", requireAuth, async (req, res) => {
+  const [u] = await db.select().from(users).where(eq(users.id, req.user!.id));
+  const memberTripIds = await db
+    .select({ tripId: tripMembers.tripId })
+    .from(tripMembers)
+    .where(eq(tripMembers.userId, req.user!.id));
+  const trips = (
+    await Promise.all(memberTripIds.map((m) => loadTripAggregate(m.tripId)))
+  ).filter(Boolean);
+
+  res.setHeader("Content-Disposition", 'attachment; filename="co-tripper-export.json"');
+  res.json({
+    exportedAt: new Date().toISOString(),
+    account: {
+      id: u.id,
+      email: u.email,
+      displayName: u.displayName,
+      avatar: u.avatar,
+      createdAt: u.createdAt,
+    },
+    trips,
+  });
+});
+
+// DELETE /api/auth/me — droit à l'effacement RGPD (supprime compte + données)
+router.delete("/me", requireAuth, async (req, res) => {
+  // La cascade FK supprime : sessions, voyages possédés (et leur contenu),
+  // appartenances, disponibilités et votes. Les messages/médias postés dans
+  // les voyages d'autrui sont anonymisés (uploaded_by / user_id → null).
+  await db.delete(users).where(eq(users.id, req.user!.id));
+  res.clearCookie(SESSION_COOKIE, { path: "/" });
+  res.status(204).end();
 });
 
 export default router;

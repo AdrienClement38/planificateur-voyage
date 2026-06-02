@@ -74,6 +74,8 @@ export const authApi = {
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
   updateProfile: (b: { displayName?: string; avatar?: string }) =>
     request<{ user: AuthUser }>("/api/auth/me", { method: "PATCH", ...body(b) }),
+  exportData: () => request<unknown>("/api/auth/export"),
+  deleteAccount: () => request<void>("/api/auth/me", { method: "DELETE" }),
 };
 
 type TripResp = { trip: Trip };

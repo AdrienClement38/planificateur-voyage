@@ -92,6 +92,23 @@ export default function AuthScreen() {
             />
           </div>
 
+          {mode === "signup" && (
+            <label className="flex items-start gap-2 text-[11px] text-slate-500 leading-snug">
+              <input type="checkbox" required className="mt-0.5 accent-indigo-600" />
+              <span>
+                J'accepte les{" "}
+                <a href="/cgu.html" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                  CGU
+                </a>{" "}
+                et la{" "}
+                <a href="/confidentialite.html" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                  politique de confidentialité
+                </a>
+                .
+              </span>
+            </label>
+          )}
+
           {authError && (
             <p className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl p-2.5 font-semibold">
               {authError}

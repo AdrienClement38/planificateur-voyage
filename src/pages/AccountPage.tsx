@@ -3,8 +3,15 @@ import { useTripStore } from "../store/TripContext";
 
 /** Page de gestion du profil de l'utilisateur connecté. */
 export default function AccountPage() {
-  const { setActivePage, currentUser, currentMember, activeTrip, handleUpdateProfile } =
-    useTripStore();
+  const {
+    setActivePage,
+    currentUser,
+    currentMember,
+    activeTrip,
+    handleUpdateProfile,
+    handleExportData,
+    handleDeleteAccount,
+  } = useTripStore();
   const [displayName, setDisplayName] = useState(currentMember?.name ?? "");
   const [avatar, setAvatar] = useState(currentMember?.avatar ?? "");
   const [saved, setSaved] = useState(false);
@@ -115,6 +122,48 @@ export default function AccountPage() {
             <p className="mt-0.5">Partagez le code de votre voyage depuis le tableau de bord pour que vos amis le rejoignent avec leur propre compte.</p>
           </div>
         </div>
+      </div>
+
+      {/* Données & confidentialité (RGPD) */}
+      <div className="border-t border-slate-100 pt-5 space-y-3">
+        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Données & confidentialité</h3>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={handleExportData}
+            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl transition cursor-pointer"
+          >
+            ⬇️ Exporter mes données (JSON)
+          </button>
+          <button
+            onClick={() => {
+              if (
+                confirm(
+                  "Supprimer définitivement votre compte et vos voyages ? Cette action est irréversible.",
+                )
+              ) {
+                void handleDeleteAccount();
+              }
+            }}
+            className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs py-2.5 px-4 rounded-xl transition cursor-pointer border border-rose-150"
+          >
+            🗑️ Supprimer mon compte
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-400">
+          Conformément au RGPD : droit d'accès/portabilité (export) et droit à l'effacement (suppression).
+          {" "}
+          <a href="/confidentialite.html" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+            Politique de confidentialité
+          </a>
+          {" · "}
+          <a href="/cgu.html" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+            CGU
+          </a>
+          {" · "}
+          <a href="/mentions-legales.html" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+            Mentions légales
+          </a>
+        </p>
       </div>
     </div>
   );

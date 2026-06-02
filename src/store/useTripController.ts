@@ -221,6 +221,35 @@ export function useTripController() {
     setSelectedTripId(null);
   }, []);
 
+  const handleExportData = useCallback(async () => {
+    try {
+      const data = await authApi.exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "co-tripper-export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setMutationError(err instanceof ApiError ? err.message : "Export impossible.");
+    }
+  }, []);
+
+  const handleDeleteAccount = useCallback(async () => {
+    try {
+      await authApi.deleteAccount();
+    } catch (err) {
+      setMutationError(err instanceof ApiError ? err.message : "Suppression impossible.");
+      return;
+    }
+    setCurrentUser(null);
+    setAuthStatus("anon");
+    setTripsList([]);
+    setActiveTrip(null);
+    setSelectedTripId(null);
+  }, []);
+
   const handleUpdateProfile = useCallback(
     async (displayName: string, avatar: string) => {
       try {
@@ -617,6 +646,8 @@ export function useTripController() {
     handleLogin,
     handleLogout,
     handleUpdateProfile,
+    handleExportData,
+    handleDeleteAccount,
     // données
     trips,
     activeTrip,
