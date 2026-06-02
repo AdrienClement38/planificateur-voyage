@@ -21,7 +21,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx server/db/migrate.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -29,9 +31,11 @@
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "pg": "^8.21.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^6.2.3",
@@ -39,11 +43,14 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.4",
+    "@electric-sql/pglite": "^0.4.6",
     "@eslint/js": "^9.39.4",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/pg": "^8.20.0",
     "@vitest/coverage-v8": "^4.1.8",
     "autoprefixer": "^10.4.21",
+    "drizzle-kit": "^0.31.10",
     "esbuild": "^0.25.0",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",

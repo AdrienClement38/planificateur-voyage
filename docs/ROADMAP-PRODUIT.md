@@ -188,10 +188,17 @@ avec B8 en parallèle.
 
 ---
 
-## 6. Décisions à confirmer
+## 6. Décisions (validées juin 2026)
 
-1. **Auth** : email+mot de passe (proposé) vs aussi connexion Google/OAuth ?
-2. **Sync** : online-first + cache (proposé) vs offline-first complet (plus complexe) ?
-3. **Landing** : Astro (proposé) vs HTML statique simple vs migration Next.js ?
-4. **Uploads** : stockage de fichiers réels (docs/photos) ou seulement des URLs
-   (comme aujourd'hui) pour rester léger sur le free tier ?
+1. **Auth** : **email + mot de passe** (argon2 + sessions cookie). Google/OAuth
+   pourra être ajouté plus tard.
+2. **Sync** : **online-first + cache** (serveur = source de vérité, localStorage
+   en cache/queue offline, last-write-wins).
+3. **Landing** : **Astro**, projet séparé de la SPA (B8).
+4. **Uploads** : **vrai upload de fichiers** (documents/photos) **avec limites**
+   pour tenir sur le free tier :
+   - taille max par fichier (ex. **5 Mo**),
+   - quota de stockage **par voyage** (ex. **50 Mo**),
+   - types autorisés (images + PDF),
+   - stockage disque AlwaysData en MVP ; migration possible vers un stockage
+     objet (ex. Cloudflare R2) si le volume grossit.
