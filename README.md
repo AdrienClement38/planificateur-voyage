@@ -111,13 +111,20 @@ npm run build       # build web + serveur
 
 ### 🌐 Web — AlwaysData
 
-L'app web et l'API sont servies par le même serveur Node/Express.
+L'app web et l'API (comptes, voyages, médias) sont servies par le même serveur Node/Express.
 
-1. `npm run build` (produit `dist/` + `dist/server.cjs`).
-2. Déployer le dépôt sur AlwaysData (site **Node.js**).
-3. Commande de démarrage : `npm start` (lance `node dist/server.cjs`).
-4. AlwaysData fournit le port via `PORT` — le serveur le respecte automatiquement.
-5. (Optionnel) définir `GEMINI_API_KEY` pour activer l'enrichissement IA.
+1. Créer une base **PostgreSQL** sur AlwaysData et noter son URL de connexion.
+2. Sur le site **Node.js** AlwaysData, définir les variables d'environnement :
+   - `NODE_ENV=production`
+   - `DATABASE_URL=postgresql://…` (la base créée à l'étape 1)
+   - *(le `PORT` est injecté automatiquement par AlwaysData)*
+   - *(optionnel)* `GEMINI_API_KEY` pour l'enrichissement IA.
+3. Installer + builder : `npm ci && npm run build` (produit `dist/` + `dist/server.cjs`).
+4. Commande de démarrage : `npm start` (lance `node dist/server.cjs`).
+   Les **migrations s'appliquent automatiquement au démarrage** (PostgreSQL).
+
+> En local, sans `DATABASE_URL`, l'app utilise **PGlite** (PostgreSQL embarqué,
+> fichier `data/dev`) — aucune installation de base de données requise.
 
 L'app est aussi une **PWA** : installable depuis le navigateur (« Ajouter à
 l'écran d'accueil ») avec un vrai mode hors-ligne (service worker).

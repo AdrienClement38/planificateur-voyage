@@ -8,6 +8,7 @@ import tripsRouter from "./server/routes/trips";
 import tripContentRouter from "./server/routes/trip-content";
 import uploadsRouter from "./server/routes/uploads";
 import { attachUser } from "./server/auth/middleware";
+import { runMigrations } from "./server/db/migrate-runner";
 
 dotenv.config();
 
@@ -490,6 +491,10 @@ app.post("/api/suggest-activities", async (req, res) => {
 
 // Start Express server and serve frontend
 async function startServer() {
+  // Auto-migration au démarrage : la base (PostgreSQL en prod, PGlite en dev)
+  // est mise à niveau avant de servir les requêtes.
+  await runMigrations();
+
   if (process.env.NODE_ENV !== "production") {
     // Import dynamique : Vite n'est chargé qu'en dev, donc le bundle de prod
     // (dist/server.cjs) ne dépend pas de Vite et tourne avec les seules
@@ -509,8 +514,11 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Co-Tripper Server] Running in offline curation mode on http://localhost:${PORT}`);
+    console.log(`[Co-Tripper Server] En écoute sur http://localhost:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("[Co-Tripper Server] Échec du démarrage :", err);
+  process.exit(1);
+});
