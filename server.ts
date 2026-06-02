@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import authRouter from "./server/routes/auth";
 import tripsRouter from "./server/routes/trips";
 import tripContentRouter from "./server/routes/trip-content";
+import uploadsRouter from "./server/routes/uploads";
 import { attachUser } from "./server/auth/middleware";
 
 dotenv.config();
@@ -41,6 +42,7 @@ app.use(attachUser);
 app.use("/api/auth", authRouter);
 app.use("/api/trips", tripsRouter);
 app.use("/api/trips", tripContentRouter);
+app.use("/api/trips", uploadsRouter);
 
 // Offline curated database of world destinations
 interface Activity {

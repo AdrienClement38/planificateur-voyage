@@ -125,6 +125,25 @@ export const tripsApi = {
 
   addDocument: (id: string, b: { name: string; type?: string; size?: string; url?: string }) =>
     request<TripResp>(`/api/trips/${id}/documents`, { method: "POST", ...body(b) }),
+  uploadFile: async (id: string, file: File): Promise<TripResp> => {
+    const form = new FormData();
+    form.append("file", file);
+    let res: Response;
+    try {
+      res = await fetch(apiUrl(`/api/trips/${id}/uploads`), {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+    } catch (cause) {
+      throw new ApiError("Impossible de joindre le serveur.", 0, { cause });
+    }
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok) {
+      throw new ApiError((data.error as string) ?? `Erreur ${res.status}`, res.status);
+    }
+    return data as TripResp;
+  },
   deleteDocument: (id: string, docId: string) =>
     request<TripResp>(`/api/trips/${id}/documents/${docId}`, { method: "DELETE" }),
 

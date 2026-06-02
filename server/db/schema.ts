@@ -173,6 +173,9 @@ export const documents = pgTable("documents", {
   type: text("type").notNull().default("other"),
   size: text("size").notNull().default(""),
   url: text("url"),
+  // Fichiers réellement téléversés (sinon 0 / null pour les entrées par URL).
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  mimeType: text("mime_type"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

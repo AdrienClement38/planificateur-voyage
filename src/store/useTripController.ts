@@ -569,6 +569,15 @@ export function useTripController() {
     [simulatedDocName, uploadDoc],
   );
 
+  /** Téléverse un vrai fichier (image/PDF) vers l'API (limites côté serveur). */
+  const handleUploadFile = useCallback(
+    (file: File) => {
+      if (!activeTrip) return;
+      void applyMutation(() => tripsApi.uploadFile(activeTrip.id, file));
+    },
+    [activeTrip, applyMutation],
+  );
+
   const handleAddPhoto = useCallback(
     (e: FormEvent) => {
       e.preventDefault();
@@ -615,9 +624,11 @@ export function useTripController() {
       e.stopPropagation();
       setDragActive(false);
       const file = e.dataTransfer.files?.[0];
-      if (file) uploadDoc(file.name, file.size);
+      if (file && activeTrip) {
+        void applyMutation(() => tripsApi.uploadFile(activeTrip.id, file));
+      }
     },
-    [uploadDoc],
+    [activeTrip, applyMutation],
   );
 
   // ----------------------------------------------------------------- Dérivés
@@ -720,6 +731,7 @@ export function useTripController() {
     handleAddAvailability,
     handleDeleteAvailability,
     handleAddManualDoc,
+    handleUploadFile,
     handleAddPhoto,
     handleDeleteDoc,
     handleDeletePhoto,

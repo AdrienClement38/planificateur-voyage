@@ -10,6 +10,7 @@ export default function MediaTab() {
     handleDrop,
     handleDeleteDoc,
     handleAddManualDoc,
+    handleUploadFile,
     simulatedDocName,
     setSimulatedDocName,
     handleDeletePhoto,
@@ -71,9 +72,13 @@ export default function MediaTab() {
 
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={() => alert(`Téléchargement simulé de : ${doc.name}`)}
+                      onClick={() =>
+                        doc.url
+                          ? window.open(doc.url, "_blank", "noopener,noreferrer")
+                          : alert(`Ce document est une référence sans fichier joint : ${doc.name}`)
+                      }
                       className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
-                      title="Télécharger le fichier"
+                      title="Ouvrir / télécharger le fichier"
                     >
                       <Download className="w-3.5 h-3.5" />
                     </button>
@@ -109,9 +114,20 @@ export default function MediaTab() {
                 Déposer
               </button>
             </div>
-            <div className="bg-dashed border border-slate-200 rounded-xl py-3 text-center text-[9px] text-slate-400 font-mono uppercase tracking-wider">
-              Zone active de dépôt (Drag & Drop)
-            </div>
+            <label className="block bg-slate-50 hover:bg-indigo-50 border border-dashed border-slate-300 hover:border-indigo-300 rounded-xl py-3 text-center text-[10px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer transition">
+              📎 Téléverser un fichier (image / PDF · 5 Mo max)
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleUploadFile(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <p className="text-[9px] text-slate-400 text-center">…ou glissez-déposez un fichier dans cette zone.</p>
           </form>
         </div>
       </div>
