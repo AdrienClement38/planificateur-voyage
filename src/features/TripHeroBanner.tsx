@@ -23,9 +23,15 @@ export default function TripHeroBanner() {
     joinTripIdInput,
     setJoinTripIdInput,
     handleJoinTrip,
+    trips,
+    selectedTripId,
+    handleSelectTrip,
+    handleDeleteTrip,
+    setActivePage,
   } = useTripStore();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   if (!activeTrip) return null;
 
@@ -47,14 +53,93 @@ export default function TripHeroBanner() {
       <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-50/50 rounded-full blur-3xl pointer-events-none translate-x-16 -translate-y-16"></div>
 
       <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-        {/* Identité du voyage */}
+        {/* Identité du voyage + sélecteur de voyage */}
         <div className="min-w-0">
           <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-500">
             Voyage en cours
           </span>
-          <h1 className="text-2xl sm:text-3xl font-black font-display text-slate-950 tracking-tight truncate mt-0.5">
-            {activeTrip.name}
-          </h1>
+          <div className="relative">
+            <button
+              onClick={() => setSwitcherOpen((v) => !v)}
+              className="group flex items-center gap-2 mt-0.5 max-w-full cursor-pointer"
+              title="Changer de voyage"
+            >
+              <h1 className="text-2xl sm:text-3xl font-black font-display text-slate-950 tracking-tight truncate">
+                {activeTrip.name}
+              </h1>
+              <ChevronDown
+                className={`w-5 h-5 text-slate-400 group-hover:text-slate-700 transition shrink-0 ${
+                  switcherOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {switcherOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setSwitcherOpen(false)} />
+                <div className="absolute left-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl shadow-xl z-40 p-2 animate-fadeIn">
+                  <div className="px-2 py-1.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      📁 Mes voyages ({trips.length})
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-[280px] overflow-y-auto pr-0.5">
+                    {trips.map((t) => (
+                      <div
+                        key={t.id}
+                        className={`flex items-center justify-between rounded-xl px-2.5 py-2 border ${
+                          t.id === selectedTripId
+                            ? "bg-indigo-50 border-indigo-100"
+                            : "border-transparent hover:bg-slate-50"
+                        }`}
+                      >
+                        <button
+                          onClick={() => {
+                            handleSelectTrip(t.id);
+                            setSwitcherOpen(false);
+                          }}
+                          className="flex-1 text-left truncate cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800 truncate">
+                            {t.name}
+                            {t.id === selectedTripId && <span className="text-indigo-600">✓</span>}
+                          </span>
+                          <span className="block text-[10px] text-slate-400 truncate mt-0.5">
+                            {t.selectedDestination || t.description || "Destination à définir"}
+                          </span>
+                        </button>
+                        <div className="flex items-center gap-1 shrink-0 pl-1.5">
+                          <span className="text-[8px] bg-slate-100 text-slate-650 px-1.5 py-0.5 rounded-full font-bold">
+                            {t.targetDays}j
+                          </span>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Supprimer le voyage « ${t.name} » ? (réservé au créateur)`))
+                                handleDeleteTrip(t.id);
+                            }}
+                            className="text-slate-300 hover:text-rose-500 p-1 rounded transition cursor-pointer"
+                            title="Supprimer (créateur uniquement)"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActivePage("create-trip");
+                      setSwitcherOpen(false);
+                    }}
+                    className="w-full mt-1.5 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200 text-indigo-650 text-[11px] font-bold py-2 rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    ➕ Créer un nouveau projet
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-2 mt-2.5">
             <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg">
               📍 {activeTrip.selectedDestination?.trim() || "Destination à définir"}

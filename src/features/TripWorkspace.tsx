@@ -18,7 +18,7 @@ export default function TripWorkspace() {
   if (!activeTrip) return null;
 
   return (
-    <div className="lg:col-span-9 space-y-5">
+    <div className="space-y-5">
 
       {/* NAVIGATION TABS BAR AT THE TOP OF THE COLUMN */}
       <div className="bg-white rounded-2xl p-1.5 border border-slate-200/80 shadow-xs flex flex-wrap gap-1">

@@ -3,7 +3,6 @@ import { TripContext, useTripStore } from "./store/TripContext";
 import { useTripController } from "./store/useTripController";
 import AppHeader from "./components/AppHeader";
 import TripHeroBanner from "./features/TripHeroBanner";
-import DashboardSidebar from "./features/DashboardSidebar";
 import TripWorkspace from "./features/TripWorkspace";
 import LoadingFallback from "./components/LoadingFallback";
 import AuthScreen from "./pages/AuthScreen";
@@ -51,10 +50,7 @@ function AppShell() {
           (activeTrip ? (
             <div className="space-y-4">
               <TripHeroBanner />
-              <div id="bento-grid-dashboard" className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <DashboardSidebar />
-                <TripWorkspace />
-              </div>
+              <TripWorkspace />
             </div>
           ) : (
             <EmptyTripsState onCreate={() => setActivePage("create-trip")} loading={isLoadingTrip} />
