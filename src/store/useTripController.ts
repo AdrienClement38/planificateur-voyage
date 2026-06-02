@@ -84,6 +84,7 @@ export function useTripController() {
 
   // --- Formulaires ---
   const [newTripName, setNewTripName] = useState("");
+  const [newTripDestination, setNewTripDestination] = useState("");
   const [newTripDays, setNewTripDays] = useState(4);
   const [newTripBudget, setNewTripBudget] = useState<BudgetType>("Modéré");
   const [newDestName, setNewDestName] = useState("");
@@ -282,6 +283,7 @@ export function useTripController() {
       try {
         const { trip } = await tripsApi.create({
           name: newTripName.trim(),
+          selectedDestination: newTripDestination.trim() || undefined,
           targetDays: newTripDays,
           budgetType: newTripBudget,
         });
@@ -290,12 +292,13 @@ export function useTripController() {
         setSelectedTripId(trip.id);
         cacheTrip(trip);
         setNewTripName("");
+        setNewTripDestination("");
         setActivePage("dashboard");
       } catch (err) {
         setMutationError(err instanceof ApiError ? err.message : "Création impossible.");
       }
     },
-    [newTripName, newTripDays, newTripBudget, refreshTripsList],
+    [newTripName, newTripDestination, newTripDays, newTripBudget, refreshTripsList],
   );
 
   const handleDeleteTrip = useCallback(
@@ -367,6 +370,15 @@ export function useTripController() {
     (destId: string) => {
       if (!activeTrip) return;
       void applyMutation(() => tripsApi.voteDestination(activeTrip.id, destId));
+    },
+    [activeTrip, applyMutation],
+  );
+
+  /** Définit explicitement la destination du voyage (le vote ne le fait pas tout seul). */
+  const handleChooseDestination = useCallback(
+    (name: string) => {
+      if (!activeTrip) return;
+      void applyMutation(() => tripsApi.patch(activeTrip.id, { selectedDestination: name }));
     },
     [activeTrip, applyMutation],
   );
@@ -679,6 +691,8 @@ export function useTripController() {
     // formulaires
     newTripName,
     setNewTripName,
+    newTripDestination,
+    setNewTripDestination,
     newTripDays,
     setNewTripDays,
     newTripBudget,
@@ -720,6 +734,7 @@ export function useTripController() {
     // contenu
     handleAddDestination,
     handleVoteDestination,
+    handleChooseDestination,
     handleDeleteDestinationProposal,
     handleToggleActivityVote,
     handleScheduleActivity,

@@ -21,6 +21,7 @@ async function getMembership(tripId: string, userId: string) {
 const createSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).optional(),
+  selectedDestination: z.string().max(200).optional(),
   targetDays: z.number().int().min(1).max(60).optional(),
   budgetType: z.enum(["Économique", "Modéré", "Luxe"]).optional(),
 });
@@ -66,6 +67,7 @@ router.post("/", async (req, res) => {
       ownerId: req.user!.id,
       name: parsed.data.name,
       description: parsed.data.description ?? "",
+      selectedDestination: parsed.data.selectedDestination ?? "",
       targetDays: parsed.data.targetDays ?? 4,
       budgetType: parsed.data.budgetType ?? "Modéré",
     })

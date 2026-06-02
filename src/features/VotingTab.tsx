@@ -8,6 +8,7 @@ export default function VotingTab() {
     currentMember,
     setActiveTab,
     handleVoteDestination,
+    handleChooseDestination,
     handleDeleteDestinationProposal,
     handleAddDestination,
     newDestName,
@@ -24,10 +25,10 @@ export default function VotingTab() {
           </div>
           <div>
             <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">
-              Vote de la Destination Gagnante
+              Destination du voyage
             </h3>
             <p className="text-xs text-slate-400">
-              Proposez des destinations et votez. L'algorithme retient la destination avec le plus de votes pour bâtir l'itinéraire.
+              Déjà décidée ? Elle est indiquée ci-dessous. Encore hésitants ? Proposez des villes, votez, puis <strong>choisissez</strong> la destination.
             </p>
           </div>
         </div>
@@ -41,8 +42,8 @@ export default function VotingTab() {
           <div className="flex items-center gap-2.5">
             <span className="text-2xl">🏆</span>
             <div>
-              <p className="text-[10px] text-indigo-500 uppercase font-extrabold tracking-wider">VOTE MAJORITAIRE actuel</p>
-              <h4 className="text-sm font-bold text-indigo-950">Départ choisi pour : {activeTrip.selectedDestination}</h4>
+              <p className="text-[10px] text-indigo-500 uppercase font-extrabold tracking-wider">DESTINATION CHOISIE</p>
+              <h4 className="text-sm font-bold text-indigo-950">Cap sur : {activeTrip.selectedDestination}</h4>
             </div>
           </div>
           <button
@@ -83,7 +84,7 @@ export default function VotingTab() {
                       <span className="font-bold text-slate-800 text-sm">{dest.name}</span>
                       {isWinning && (
                         <span className="bg-indigo-600 text-white font-bold text-[8.5px] uppercase px-1.5 py-0.5 rounded">
-                          ÉLU 👑
+                          CHOISIE ✓
                         </span>
                       )}
                     </div>
@@ -93,6 +94,15 @@ export default function VotingTab() {
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {!isWinning && (
+                      <button
+                        onClick={() => handleChooseDestination(dest.name)}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition select-none bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                        title="Définir cette ville comme destination du voyage"
+                      >
+                        Choisir
+                      </button>
+                    )}
                     {/* Vote button toggler */}
                     <button
                       onClick={() => handleVoteDestination(dest.id)}

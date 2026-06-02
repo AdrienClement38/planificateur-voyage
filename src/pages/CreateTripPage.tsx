@@ -6,6 +6,8 @@ export default function CreateTripPage() {
     handleCreateTrip,
     newTripName,
     setNewTripName,
+    newTripDestination,
+    setNewTripDestination,
     newTripDays,
     setNewTripDays,
     newTripBudget,
@@ -39,6 +41,19 @@ export default function CreateTripPage() {
             placeholder="ex: Roadtrip au Portugal 🇵🇹 ou Trek Chamonix 🥾"
             value={newTripName}
             onChange={(e) => setNewTripName(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-hidden font-medium"
+          />
+        </div>
+
+        <div className="space-y-1.5 font-sans">
+          <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+            Destination <span className="text-slate-300 normal-case font-semibold">(optionnel — sinon à décider via le vote)</span>
+          </label>
+          <input
+            type="text"
+            placeholder="ex: Barcelone, Espagne 🇪🇸"
+            value={newTripDestination}
+            onChange={(e) => setNewTripDestination(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-hidden font-medium"
           />
         </div>

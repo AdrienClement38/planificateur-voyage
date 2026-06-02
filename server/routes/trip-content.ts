@@ -3,7 +3,6 @@ import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";
 import {
-  trips,
   tripMembers,
   availabilities,
   destinations,
@@ -49,35 +48,9 @@ async function respondTrip(res: Response, tripId: string): Promise<void> {
   res.json({ trip: await loadTripAggregate(tripId) });
 }
 
-/** Recalcule la destination gagnante (la plus votée) et la persiste. */
-async function recomputeWinningDestination(tripId: string): Promise<void> {
-  const dests = await db
-    .select()
-    .from(destinations)
-    .where(eq(destinations.tripId, tripId));
-  if (dests.length === 0) {
-    await db.update(trips).set({ selectedDestination: "" }).where(eq(trips.id, tripId));
-    return;
-  }
-  const votes = await db
-    .select()
-    .from(destinationVotes)
-    .where(inArray(destinationVotes.destinationId, dests.map((d) => d.id)));
-  const counts = new Map<string, number>();
-  for (const v of votes) {
-    counts.set(v.destinationId, (counts.get(v.destinationId) ?? 0) + 1);
-  }
-  let top = dests[0];
-  let max = -1;
-  for (const d of dests) {
-    const c = counts.get(d.id) ?? 0;
-    if (c > max) {
-      max = c;
-      top = d;
-    }
-  }
-  await db.update(trips).set({ selectedDestination: top.name }).where(eq(trips.id, tripId));
-}
+// Note : le vote ne définit PAS automatiquement la destination du voyage.
+// La destination est choisie à la création ou via une action explicite
+// (PATCH /api/trips/:id { selectedDestination }). Le vote n'est qu'un signal.
 
 // ------------------------------------------------------------------ Disponibilités
 router.post("/:id/availabilities", requireMembership, async (req, res) => {
@@ -128,7 +101,6 @@ router.post("/:id/destinations", requireMembership, async (req, res) => {
     .returning();
   // Auto-vote du proposant.
   await db.insert(destinationVotes).values({ destinationId: dest.id, userId: req.user!.id });
-  await recomputeWinningDestination(req.params.id);
   await respondTrip(res, req.params.id);
 });
 
@@ -136,7 +108,6 @@ router.delete("/:id/destinations/:destId", requireMembership, async (req, res) =
   await db
     .delete(destinations)
     .where(and(eq(destinations.id, req.params.destId), eq(destinations.tripId, req.params.id)));
-  await recomputeWinningDestination(req.params.id);
   await respondTrip(res, req.params.id);
 });
 
@@ -164,7 +135,6 @@ router.post("/:id/destinations/:destId/vote", requireMembership, async (req, res
       .insert(destinationVotes)
       .values({ destinationId: req.params.destId, userId: req.user!.id });
   }
-  await recomputeWinningDestination(req.params.id);
   await respondTrip(res, req.params.id);
 });
 

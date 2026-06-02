@@ -83,7 +83,7 @@ type TripResp = { trip: Trip };
 export const tripsApi = {
   list: () => request<{ trips: TripSummary[] }>("/api/trips"),
   get: (id: string) => request<TripResp>(`/api/trips/${id}`),
-  create: (b: { name: string; description?: string; targetDays?: number; budgetType?: string }) =>
+  create: (b: { name: string; description?: string; selectedDestination?: string; targetDays?: number; budgetType?: string }) =>
     request<TripResp>("/api/trips", { method: "POST", ...body(b) }),
   patch: (id: string, b: Record<string, unknown>) =>
     request<TripResp>(`/api/trips/${id}`, { method: "PATCH", ...body(b) }),
