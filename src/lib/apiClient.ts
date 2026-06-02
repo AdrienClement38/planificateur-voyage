@@ -41,12 +41,36 @@ export class ApiError extends Error {
   }
 }
 
+// En mobile (Capacitor), l'API est cross-origin : le cookie httpOnly n'est pas
+// envoyé → on utilise un jeton Bearer stocké localement. En web (même origine,
+// VITE_API_BASE_URL vide), on reste sur le cookie httpOnly (plus sûr).
+const USE_BEARER = Boolean(import.meta.env.VITE_API_BASE_URL);
+const TOKEN_KEY = "cotripper_token";
+
+function getToken(): string | null {
+  return USE_BEARER ? localStorage.getItem(TOKEN_KEY) : null;
+}
+export function setAuthToken(token: string | null): void {
+  if (!USE_BEARER) return;
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(apiUrl(path), {
       credentials: "include",
-      headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+        ...(options?.headers ?? {}),
+      },
       ...options,
     });
   } catch (cause) {
@@ -67,15 +91,33 @@ const body = (b: unknown): RequestInit => ({ body: JSON.stringify(b) });
 
 export const authApi = {
   me: () => request<{ user: AuthUser }>("/api/auth/me"),
-  signup: (b: { email: string; password: string; displayName: string }) =>
-    request<{ user: AuthUser }>("/api/auth/signup", { method: "POST", ...body(b) }),
-  login: (b: { email: string; password: string }) =>
-    request<{ user: AuthUser }>("/api/auth/login", { method: "POST", ...body(b) }),
-  logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+  signup: async (b: { email: string; password: string; displayName: string }) => {
+    const res = await request<{ user: AuthUser; token?: string }>("/api/auth/signup", {
+      method: "POST",
+      ...body(b),
+    });
+    setAuthToken(res.token ?? null);
+    return { user: res.user };
+  },
+  login: async (b: { email: string; password: string }) => {
+    const res = await request<{ user: AuthUser; token?: string }>("/api/auth/login", {
+      method: "POST",
+      ...body(b),
+    });
+    setAuthToken(res.token ?? null);
+    return { user: res.user };
+  },
+  logout: async () => {
+    await request<void>("/api/auth/logout", { method: "POST" });
+    setAuthToken(null);
+  },
   updateProfile: (b: { displayName?: string; avatar?: string }) =>
     request<{ user: AuthUser }>("/api/auth/me", { method: "PATCH", ...body(b) }),
   exportData: () => request<unknown>("/api/auth/export"),
-  deleteAccount: () => request<void>("/api/auth/me", { method: "DELETE" }),
+  deleteAccount: async () => {
+    await request<void>("/api/auth/me", { method: "DELETE" });
+    setAuthToken(null);
+  },
 };
 
 type TripResp = { trip: Trip };
@@ -133,6 +175,7 @@ export const tripsApi = {
       res = await fetch(apiUrl(`/api/trips/${id}/uploads`), {
         method: "POST",
         credentials: "include",
+        headers: authHeaders(),
         body: form,
       });
     } catch (cause) {

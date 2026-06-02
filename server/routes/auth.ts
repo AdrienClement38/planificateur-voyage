@@ -10,7 +10,7 @@ import {
   invalidateSession,
   SESSION_COOKIE,
 } from "../auth/session";
-import { requireAuth } from "../auth/middleware";
+import { requireAuth, getSessionToken } from "../auth/middleware";
 import { loadTripAggregate } from "../services/trip-aggregate";
 
 const router = Router();
@@ -70,6 +70,7 @@ router.post("/signup", authLimiter, async (req, res) => {
   setSessionCookie(res, token, expiresAt);
   res.status(201).json({
     user: { id: user.id, email: user.email, displayName: user.displayName, avatar: user.avatar },
+    token, // pour le client mobile (Authorization: Bearer) ; le web utilise le cookie
   });
 });
 
@@ -92,12 +93,13 @@ router.post("/login", authLimiter, async (req, res) => {
   setSessionCookie(res, token, expiresAt);
   res.json({
     user: { id: user.id, email: user.email, displayName: user.displayName, avatar: user.avatar },
+    token,
   });
 });
 
 // POST /api/auth/logout
 router.post("/logout", async (req, res) => {
-  const token = req.cookies?.[SESSION_COOKIE];
+  const token = getSessionToken(req);
   if (token) await invalidateSession(token);
   res.clearCookie(SESSION_COOKIE, { path: "/" });
   res.status(204).end();
