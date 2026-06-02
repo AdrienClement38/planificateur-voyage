@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { TripContext, useTripStore } from "./store/TripContext";
 import { useTripController } from "./store/useTripController";
 import AppHeader from "./components/AppHeader";
+import TripHeroBanner from "./features/TripHeroBanner";
 import DashboardSidebar from "./features/DashboardSidebar";
 import TripWorkspace from "./features/TripWorkspace";
 import LoadingFallback from "./components/LoadingFallback";
@@ -48,9 +49,12 @@ function AppShell() {
 
         {activePage === "dashboard" &&
           (activeTrip ? (
-            <div id="bento-grid-dashboard" className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              <DashboardSidebar />
-              <TripWorkspace />
+            <div className="space-y-4">
+              <TripHeroBanner />
+              <div id="bento-grid-dashboard" className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <DashboardSidebar />
+                <TripWorkspace />
+              </div>
             </div>
           ) : (
             <EmptyTripsState onCreate={() => setActivePage("create-trip")} loading={isLoadingTrip} />

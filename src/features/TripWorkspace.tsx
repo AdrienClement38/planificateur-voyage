@@ -18,35 +18,7 @@ export default function TripWorkspace() {
   if (!activeTrip) return null;
 
   return (
-    <div className="lg:col-span-8 space-y-5">
-
-      {/* CHOSEN ADVENTURE COMPACT HEADER BANNER */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fadeIn text-left">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/20 rounded-full blur-2xl pointer-events-none translate-x-12 -translate-y-12"></div>
-
-        <div className="relative z-10 space-y-1.5">
-          <span className="text-[9.5px] font-extrabold uppercase bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md">
-            📂 Voyage Sélectionné
-          </span>
-          <h2 className="text-xl font-bold font-display text-slate-800 tracking-tight pt-1.5">
-            {activeTrip.name}
-          </h2>
-          <p className="text-xs text-slate-500 italic max-w-xl">
-            "{activeTrip.description}"
-          </p>
-        </div>
-
-        <div className="relative z-10 shrink-0 flex items-center gap-3">
-          <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center shrink-0 min-w-[70px]">
-            <span className="block text-[8px] uppercase font-bold text-slate-400">DURÉE</span>
-            <span className="text-xs font-black text-slate-700">{activeTrip.targetDays} jours</span>
-          </div>
-          <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center shrink-0 min-w-[75px]">
-            <span className="block text-[8px] uppercase font-bold text-slate-400">SERVICES</span>
-            <span className="text-xs font-black text-indigo-600">{activeTrip.budgetType}</span>
-          </div>
-        </div>
-      </div>
+    <div className="lg:col-span-9 space-y-5">
 
       {/* NAVIGATION TABS BAR AT THE TOP OF THE COLUMN */}
       <div className="bg-white rounded-2xl p-1.5 border border-slate-200/80 shadow-xs flex flex-wrap gap-1">

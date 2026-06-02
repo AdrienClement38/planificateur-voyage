@@ -1,20 +1,10 @@
-import { ChevronDown, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import OfflineIndicator from "./OfflineIndicator";
 import { useTripStore } from "../store/TripContext";
 
-/** En-tête de navigation (pages, budget, connectivité, déconnexion). */
+/** En-tête applicatif : navigation entre pages, connectivité, déconnexion. */
 export default function AppHeader() {
-  const {
-    setActivePage,
-    activePage,
-    currentMember,
-    isBudgetDropdownOpen,
-    setIsBudgetDropdownOpen,
-    budgetBreakdown,
-    activeTrip,
-    handleUpdateTransportValue,
-    handleLogout,
-  } = useTripStore();
+  const { setActivePage, activePage, currentMember, handleLogout } = useTripStore();
 
   return (
     <>
@@ -33,9 +23,6 @@ export default function AppHeader() {
                 🧭 Planificateur de Voyage Coordonné
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Sillonnez le monde ensemble • Gestion des dates, des budgets et du programme collectif
-            </p>
           </div>
         </div>
 
@@ -75,82 +62,6 @@ export default function AppHeader() {
           </button>
 
           <div className="h-6 w-[1.5px] bg-slate-200 hidden sm:block mx-1"></div>
-
-          {/* INTEGRATED "BUDGET PAR PARTICIPANT" DROPDOWN PILL */}
-          {activeTrip && (
-          <div className="relative">
-            <button
-              onClick={() => setIsBudgetDropdownOpen(!isBudgetDropdownOpen)}
-              className={`flex items-center gap-2 px-3.5 py-1.8 rounded-xl text-xs font-extrabold transition duration-200 cursor-pointer border ${
-                isBudgetDropdownOpen
-                  ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
-                  : "bg-emerald-50 border-emerald-200 hover:bg-emerald-100 text-emerald-800"
-              }`}
-              title="Consulter le budget détaillé estimé par voyageur"
-            >
-              <span>💰 Budget: <strong className="font-black">{budgetBreakdown.totalIndividual.toLocaleString("fr-FR")}€</strong> / pers</span>
-              <ChevronDown className={`w-3 h-3 transition duration-250 ${isBudgetDropdownOpen ? "rotate-180" : ""}`} />
-            </button>
-
-            {isBudgetDropdownOpen && (
-              <div className="absolute right-0 mt-2.5 w-80 bg-slate-900 border border-slate-800 rounded-2xl p-4.5 shadow-xl z-55 text-white text-left text-xs space-y-3.5 animate-fadeIn">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                  <span className="font-extrabold text-[10.5px] uppercase text-emerald-400 tracking-wider">💰 Budget par participant estimé</span>
-                  <button
-                    onClick={() => setIsBudgetDropdownOpen(false)}
-                    className="text-slate-400 hover:text-white transition text-sm font-bold w-5 h-5 flex items-center justify-center bg-slate-800 rounded-full cursor-pointer"
-                  >
-                    &times;
-                  </button>
-                </div>
-
-                <div className="bg-gradient-to-br from-emerald-950/80 to-slate-850 p-3.5 rounded-xl border border-emerald-900/30 text-center space-y-1">
-                  <span className="block text-[10px] text-slate-400 uppercase font-extrabold tracking-wider">Moyenne collective individuelle</span>
-                  <span className="text-3xl font-black text-white font-display tracking-tight">
-                    {budgetBreakdown.totalIndividual.toLocaleString("fr-FR")}€
-                  </span>
-                  <span className="block text-[10px] text-emerald-300">
-                    Calculé sur {activeTrip.targetDays} jours de séjour ({activeTrip.budgetType})
-                  </span>
-                </div>
-
-                <div className="space-y-2.5 pt-1.5 font-medium text-slate-300">
-                  <div className="flex justify-between items-center text-[11px] border-b border-slate-800/60 pb-1.5">
-                    <span className="flex items-center gap-1.5">🏠 Hébergement ({activeTrip.averageLodgingCostPerNight}€/nuit)</span>
-                    <span className="font-bold text-white font-mono">{budgetBreakdown.totalLodging}€</span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-[11px] border-b border-slate-800/60 pb-1.5">
-                    <span className="flex items-center gap-1.5">🚌 Transport Local ({activeTrip.averageLocalTransportCostPerDay}€/jour)</span>
-                    <span className="font-bold text-white font-mono">{budgetBreakdown.totalLocalTransport}€</span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-[11px] border-b border-slate-800/60 pb-1.5">
-                    <span className="flex items-center gap-1.5">✨ Activités votées au programme</span>
-                    <span className="font-bold text-white font-mono">{budgetBreakdown.activitiesCost}€</span>
-                  </div>
-
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-                    <div className="flex justify-between items-center text-[11px]">
-                      <span className="flex items-center gap-1 text-slate-400 font-bold uppercase tracking-wider text-[9px]">✈️ Transport Principal A/R :</span>
-                      <span className="font-extrabold text-emerald-450 font-mono text-sm">{budgetBreakdown.flightCost}€</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1400"
-                      step="20"
-                      value={activeTrip.externalTransportCost || 0}
-                      onChange={(e) => handleUpdateTransportValue(Number(e.target.value))}
-                      className="w-full accent-emerald-400 cursor-ew-resize h-1 bg-slate-800 rounded-lg"
-                    />
-                    <span className="block text-[9px] text-slate-400 text-right italic font-medium">Glissez pour modifier en direct</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          )}
 
           <OfflineIndicator />
 
