@@ -15,6 +15,7 @@ import {
   real,
   timestamp,
   primaryKey,
+  index,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -65,7 +66,10 @@ export const tripMembers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("member"), // "owner" | "member"
   },
-  (t) => [primaryKey({ columns: [t.tripId, t.userId] })],
+  (t) => [
+    primaryKey({ columns: [t.tripId, t.userId] }),
+    index("trip_members_user_idx").on(t.userId),
+  ],
 );
 
 export const availabilities = pgTable("availabilities", {
@@ -78,7 +82,7 @@ export const availabilities = pgTable("availabilities", {
     .references(() => users.id, { onDelete: "cascade" }),
   start: text("start").notNull(), // YYYY-MM-DD
   end: text("end").notNull(),
-});
+}, (t) => [index("availabilities_trip_idx").on(t.tripId)]);
 
 export const destinations = pgTable("destinations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -87,7 +91,7 @@ export const destinations = pgTable("destinations", {
     .references(() => trips.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   proposedBy: text("proposed_by").notNull().default(""),
-});
+}, (t) => [index("destinations_trip_idx").on(t.tripId)]);
 
 export const destinationVotes = pgTable(
   "destination_votes",
@@ -117,7 +121,7 @@ export const activities = pgTable("activities", {
   reviewsCount: integer("reviews_count"),
   duration: text("duration"),
   bookingUrl: text("booking_url"),
-});
+}, (t) => [index("activities_trip_idx").on(t.tripId)]);
 
 export const activityVotes = pgTable(
   "activity_votes",
@@ -139,7 +143,7 @@ export const itineraryDays = pgTable("itinerary_days", {
     .references(() => trips.id, { onDelete: "cascade" }),
   day: integer("day").notNull(),
   title: text("title").notNull().default(""),
-});
+}, (t) => [index("itinerary_days_trip_idx").on(t.tripId)]);
 
 export const events = pgTable("events", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -149,7 +153,7 @@ export const events = pgTable("events", {
   time: text("time").notNull(),
   description: text("description").notNull(),
   cost: integer("cost").notNull().default(0),
-});
+}, (t) => [index("events_day_idx").on(t.dayId)]);
 
 export const messages = pgTable("messages", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -159,7 +163,7 @@ export const messages = pgTable("messages", {
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }), // null = système
   text: text("text").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [index("messages_trip_idx").on(t.tripId)]);
 
 export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -177,7 +181,7 @@ export const documents = pgTable("documents", {
   sizeBytes: integer("size_bytes").notNull().default(0),
   mimeType: text("mime_type"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [index("documents_trip_idx").on(t.tripId)]);
 
 export const photos = pgTable("photos", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -190,4 +194,4 @@ export const photos = pgTable("photos", {
   url: text("url").notNull(),
   caption: text("caption").notNull().default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [index("photos_trip_idx").on(t.tripId)]);

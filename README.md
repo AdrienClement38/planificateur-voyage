@@ -120,7 +120,10 @@ L'app web et l'API (comptes, voyages, médias) sont servies par le même serveur
    - *(le `PORT` est injecté automatiquement par AlwaysData)*
    - *(optionnel)* `GEMINI_API_KEY` pour l'enrichissement IA.
 3. Installer + builder : `npm ci && npm run build` (produit `dist/` + `dist/server.cjs`).
-4. Commande de démarrage : `npm start` (lance `node dist/server.cjs`).
+4. *(Recommandé)* alléger le runtime : `npm prune --omit=dev` — retire les
+   dépendances de **build** (React, Vite, Capacitor, esbuild…) inutiles au
+   serveur en production (~−300 Mo sur le disque).
+5. Commande de démarrage : `npm start` (lance `node dist/server.cjs`).
    Les **migrations s'appliquent automatiquement au démarrage** (PostgreSQL).
 
 > En local, sans `DATABASE_URL`, l'app utilise **PGlite** (PostgreSQL embarqué,

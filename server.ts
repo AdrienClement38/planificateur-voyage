@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import helmet from "helmet";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import authRouter from "./server/routes/auth";
 import tripsRouter from "./server/routes/trips";
@@ -21,6 +22,9 @@ app.set("trust proxy", 1);
 // En-têtes de sécurité (HSTS, X-Content-Type-Options, etc.). CSP désactivée
 // pour ne pas casser la SPA Vite/PWA — à durcir ultérieurement si besoin.
 app.use(helmet({ contentSecurityPolicy: false }));
+
+// Compression gzip des réponses (JSON d'API ~−70/80 %) : bande passante + mobile.
+app.use(compression());
 
 app.use(express.json({ limit: "1mb" }));
 

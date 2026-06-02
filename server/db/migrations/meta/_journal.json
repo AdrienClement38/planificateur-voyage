@@ -15,6 +15,13 @@
       "when": 1780389378438,
       "tag": "0001_redundant_thunderbolt_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780408124988,
+      "tag": "0002_lovely_whiplash",
+      "breakpoints": true
     }
   ]
 }

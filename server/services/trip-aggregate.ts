@@ -36,76 +36,58 @@ export async function loadTripAggregate(tripId: string): Promise<Trip | null> {
   const [trip] = await db.select().from(trips).where(eq(trips.id, tripId));
   if (!trip) return null;
 
-  const memberRows = await db
-    .select({ id: users.id, name: users.displayName, avatar: users.avatar })
-    .from(tripMembers)
-    .innerJoin(users, eq(tripMembers.userId, users.id))
-    .where(eq(tripMembers.tripId, tripId));
+  // Lot 1 : requêtes indépendantes lancées en parallèle (sur PostgreSQL/pool =
+  // vrai parallélisme ; sur PGlite = file d'attente, sans surcoût).
+  const [memberRows, availRows, destRows, actRows, dayRows, msgRows, docRows, photoRows] =
+    await Promise.all([
+      db
+        .select({ id: users.id, name: users.displayName, avatar: users.avatar })
+        .from(tripMembers)
+        .innerJoin(users, eq(tripMembers.userId, users.id))
+        .where(eq(tripMembers.tripId, tripId)),
+      db.select().from(availabilities).where(eq(availabilities.tripId, tripId)),
+      db.select().from(destinations).where(eq(destinations.tripId, tripId)),
+      db.select().from(activities).where(eq(activities.tripId, tripId)),
+      db
+        .select()
+        .from(itineraryDays)
+        .where(eq(itineraryDays.tripId, tripId))
+        .orderBy(asc(itineraryDays.day)),
+      db
+        .select({
+          id: messages.id,
+          senderId: messages.userId,
+          senderName: users.displayName,
+          senderAvatar: users.avatar,
+          text: messages.text,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .leftJoin(users, eq(messages.userId, users.id))
+        .where(eq(messages.tripId, tripId))
+        .orderBy(asc(messages.createdAt)),
+      db.select().from(documents).where(eq(documents.tripId, tripId)),
+      db.select().from(photos).where(eq(photos.tripId, tripId)),
+    ]);
 
-  const availRows = await db
-    .select()
-    .from(availabilities)
-    .where(eq(availabilities.tripId, tripId));
-
-  const destRows = await db
-    .select()
-    .from(destinations)
-    .where(eq(destinations.tripId, tripId));
+  // Lot 2 : votes + événements (dépendent des IDs du lot 1), en parallèle.
   const destIds = destRows.map((d) => d.id);
-  const destVoteRows = destIds.length
-    ? await db
-        .select()
-        .from(destinationVotes)
-        .where(inArray(destinationVotes.destinationId, destIds))
-    : [];
-  const destVotesById = groupBy(destVoteRows, (v) => v.destinationId);
-
-  const actRows = await db
-    .select()
-    .from(activities)
-    .where(eq(activities.tripId, tripId));
   const actIds = actRows.map((a) => a.id);
-  const actVoteRows = actIds.length
-    ? await db
-        .select()
-        .from(activityVotes)
-        .where(inArray(activityVotes.activityId, actIds))
-    : [];
-  const actVotesById = groupBy(actVoteRows, (v) => v.activityId);
-
-  const dayRows = await db
-    .select()
-    .from(itineraryDays)
-    .where(eq(itineraryDays.tripId, tripId))
-    .orderBy(asc(itineraryDays.day));
   const dayIds = dayRows.map((d) => d.id);
-  const eventRows = dayIds.length
-    ? await db.select().from(events).where(inArray(events.dayId, dayIds))
-    : [];
+  const [destVoteRows, actVoteRows, eventRows] = await Promise.all([
+    destIds.length
+      ? db.select().from(destinationVotes).where(inArray(destinationVotes.destinationId, destIds))
+      : Promise.resolve([]),
+    actIds.length
+      ? db.select().from(activityVotes).where(inArray(activityVotes.activityId, actIds))
+      : Promise.resolve([]),
+    dayIds.length
+      ? db.select().from(events).where(inArray(events.dayId, dayIds))
+      : Promise.resolve([]),
+  ]);
+  const destVotesById = groupBy(destVoteRows, (v) => v.destinationId);
+  const actVotesById = groupBy(actVoteRows, (v) => v.activityId);
   const eventsByDay = groupBy(eventRows, (e) => e.dayId);
-
-  const msgRows = await db
-    .select({
-      id: messages.id,
-      senderId: messages.userId,
-      senderName: users.displayName,
-      senderAvatar: users.avatar,
-      text: messages.text,
-      createdAt: messages.createdAt,
-    })
-    .from(messages)
-    .leftJoin(users, eq(messages.userId, users.id))
-    .where(eq(messages.tripId, tripId))
-    .orderBy(asc(messages.createdAt));
-
-  const docRows = await db
-    .select()
-    .from(documents)
-    .where(eq(documents.tripId, tripId));
-  const photoRows = await db
-    .select()
-    .from(photos)
-    .where(eq(photos.tripId, tripId));
 
   return {
     id: trip.id,
