@@ -32,8 +32,9 @@ export default defineConfig(() => {
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
           navigateFallback: '/index.html',
           // L'API n'est jamais mise en cache : toujours le réseau, avec repli
-          // hors-ligne géré côté application.
-          navigateFallbackDenylist: [/^\/api\//],
+          // hors-ligne géré côté application. robots.txt / sitemap.xml et les
+          // fichiers téléversés ne doivent pas non plus retomber sur la SPA.
+          navigateFallbackDenylist: [/^\/api\//, /^\/robots\.txt$/, /^\/sitemap\.xml$/],
           runtimeCaching: [
             {
               urlPattern: ({url}) => url.pathname.startsWith('/api/'),

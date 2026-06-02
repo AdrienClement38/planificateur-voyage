@@ -131,6 +131,11 @@ export default function AuthScreen() {
         <p className="text-[10px] text-slate-400 text-center">
           Vos données sont stockées de manière sécurisée. Hébergement en France/UE.
         </p>
+        <p className="text-[10px] text-center">
+          <a href="/decouvrir.html" className="text-indigo-500 hover:underline font-semibold">
+            Découvrir Co-Tripper →
+          </a>
+        </p>
       </div>
     </div>
   );

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://co-tripper.example/decouvrir.html" />
+    <title>Co-Tripper — Organisez vos voyages de groupe sans prise de tête</title>
+    <meta
+      name="description"
+      content="Co-Tripper réunit votre groupe pour planifier un voyage : trouvez les meilleures dates, votez la destination, suivez le budget par personne, co-construisez l'itinéraire et discutez — même hors-ligne."
+    />
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Co-Tripper" />
+    <meta property="og:title" content="Co-Tripper — Planificateur de voyage en groupe" />
+    <meta
+      property="og:description"
+      content="Dates communes, vote de destination, budget par participant, itinéraire collaboratif et chat. Tout au même endroit."
+    />
+    <meta property="og:url" content="https://co-tripper.example/decouvrir.html" />
+    <meta property="og:image" content="https://co-tripper.example/pwa-icon.svg" />
+    <meta property="og:locale" content="fr_FR" />
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Co-Tripper — Planificateur de voyage en groupe" />
+    <meta
+      name="twitter:description"
+      content="Organisez vos voyages de groupe : dates, votes, budget, itinéraire, chat — même hors-ligne."
+    />
+    <meta name="twitter:image" content="https://co-tripper.example/pwa-icon.svg" />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="icon" href="/pwa-icon.svg" type="image/svg+xml" />
+
+    <!-- Données structurées -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Co-Tripper",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Web, Android, iOS",
+        "description": "Planificateur de voyage en groupe : dates, votes de destination, budget par participant, itinéraire collaboratif, messagerie et partage de médias.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "inLanguage": "fr-FR"
+      }
+    </script>
+
+    <style>
+      :root { --indigo: #4f46e5; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #1e293b; line-height: 1.6; }
+      a { color: var(--indigo); }
+      .wrap { max-width: 1040px; margin: 0 auto; padding: 0 1.25rem; }
+      header.hero {
+        background: radial-gradient(ellipse at top, #312e81, #0f172a);
+        color: #fff; text-align: center; padding: 4.5rem 1rem 5rem;
+      }
+      .logo { font-size: 3rem; }
+      h1 { font-size: clamp(1.9rem, 5vw, 3rem); font-weight: 900; margin: .5rem 0; letter-spacing: -.02em; }
+      .tagline { color: #c7d2fe; font-size: 1.1rem; max-width: 620px; margin: 0 auto 1.75rem; }
+      .cta {
+        display: inline-block; background: var(--indigo); color: #fff; font-weight: 700;
+        text-decoration: none; padding: .9rem 1.8rem; border-radius: 1rem; transition: background .2s;
+      }
+      .cta:hover { background: #4338ca; }
+      .cta.ghost { background: rgba(255,255,255,.12); margin-left: .5rem; }
+      section { padding: 3.5rem 0; }
+      h2 { font-size: 1.6rem; font-weight: 800; text-align: center; margin-bottom: 2rem; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; }
+      .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 1.25rem; padding: 1.5rem; }
+      .card h3 { margin: .25rem 0 .5rem; font-size: 1.05rem; }
+      .card p { margin: 0; color: #475569; font-size: .95rem; }
+      .emoji { font-size: 1.75rem; }
+      .final { background: #eef2ff; text-align: center; border-radius: 1.5rem; padding: 2.5rem 1.5rem; margin: 0 1rem; }
+      footer { text-align: center; color: #94a3b8; font-size: .85rem; padding: 2.5rem 1rem 3rem; }
+      footer a { color: #64748b; margin: 0 .4rem; }
+    </style>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="wrap">
+        <div class="logo">🛶</div>
+        <h1>Organisez vos voyages de groupe sans prise de tête</h1>
+        <p class="tagline">
+          Co-Tripper réunit votre bande au même endroit : trouvez les meilleures dates,
+          votez la destination, maîtrisez le budget de chacun et co-construisez l'itinéraire.
+        </p>
+        <a class="cta" href="/">Commencer gratuitement</a>
+        <a class="cta ghost" href="#fonctionnalites">Voir les fonctionnalités</a>
+      </div>
+    </header>
+
+    <section id="fonctionnalites" class="wrap">
+      <h2>Tout ce qu'il faut pour partir ensemble</h2>
+      <div class="grid">
+        <div class="card"><div class="emoji">🗓️</div><h3>Dates communes</h3><p>Chacun saisit ses disponibilités ; l'algorithme propose les meilleures périodes où le maximum d'amis sont libres.</p></div>
+        <div class="card"><div class="emoji">🗳️</div><h3>Vote de destination</h3><p>Proposez des villes et votez. La destination gagnante est élue démocratiquement.</p></div>
+        <div class="card"><div class="emoji">💰</div><h3>Budget par participant</h3><p>Hébergement, transport, activités, billets A/R : le coût estimé par personne se met à jour en direct.</p></div>
+        <div class="card"><div class="emoji">🧭</div><h3>Itinéraire collaboratif</h3><p>Suggestions d'activités et programme jour par jour, construits à plusieurs.</p></div>
+        <div class="card"><div class="emoji">💬</div><h3>Messagerie & médias</h3><p>Un chat de groupe et un espace pour les billets, réservations et photos d'inspiration.</p></div>
+        <div class="card"><div class="emoji">📲</div><h3>Web + mobile, hors-ligne</h3><p>Installable comme une app (PWA), disponible sur mobile, et résiliente sans réseau.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="final wrap">
+        <h2 style="margin-bottom:.75rem">Prêt à planifier votre prochaine aventure ?</h2>
+        <p style="color:#475569;margin-top:0">Gratuit, sans publicité. Vos données restent en France/UE.</p>
+        <a class="cta" href="/">Créer mon compte 🛶</a>
+      </div>
+    </section>
+
+    <footer>
+      <p>© Co-Tripper — Planificateur de voyage en groupe</p>
+      <p>
+        <a href="/confidentialite.html">Confidentialité</a> ·
+        <a href="/cgu.html">CGU</a> ·
+        <a href="/mentions-legales.html">Mentions légales</a>
+      </p>
+    </footer>
+  </body>
+</html>
