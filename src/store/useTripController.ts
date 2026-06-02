@@ -75,9 +75,6 @@ export function useTripController() {
   const [isLoadingTrip, setIsLoadingTrip] = useState(false);
   const [mutationError, setMutationError] = useState("");
 
-  // --- Réseau (simulation manuelle conservée) ---
-  const [isOffline, setIsOffline] = useState(false);
-
   // --- Navigation ---
   const [activePage, setActivePage] = useState<ActivePage>("dashboard");
   const [activeTab, setActiveTab] = useState<ActiveTab>("calendar");
@@ -681,9 +678,7 @@ export function useTripController() {
     currentMemberId: currentUser?.id ?? "",
     members,
     budgetBreakdown,
-    // réseau / nav
-    isOffline,
-    setIsOffline,
+    // nav
     activePage,
     setActivePage,
     activeTab,

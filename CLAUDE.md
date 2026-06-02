@@ -4,79 +4,93 @@ Guide pour travailler efficacement sur **Co-Tripper** (planificateur de voyage e
 
 ## Vue d'ensemble
 
-App web React + TypeScript (Vite) qui aide un groupe à organiser un voyage :
-calendrier de disponibilités, vote de destinations, budget par participant,
-itinéraire, chat et partage de médias. **Offline-first** : toutes les données
-vivent dans le `localStorage` (aucune base de données). Un serveur Express léger
-sert le front et expose une API de suggestions d'activités.
+Application **full-stack** de planification de voyage de groupe :
+- **Front** : React 19 + TypeScript (Vite) + Tailwind v4 (SPA, PWA installable).
+- **Back** : serveur **Express** servant le front + une **API REST** (`/api`)
+  pour les comptes, les voyages et toutes les ressources collaboratives.
+- **Base de données** via **Drizzle ORM** : **PostgreSQL** en production
+  (AlwaysData), **PGlite** (Postgres embarqué, fichier `data/`) en local —
+  aucune installation de base requise pour développer.
+- **Comptes réels** : authentification email + mot de passe (argon2), sessions
+  cookie `httpOnly` (web) ou jeton **Bearer** (mobile cross-origin).
 
 Cible : **une seule base de code → web (AlwaysData) + app mobile (Capacitor /
-Play Store)**. Voir « Déploiement » dans le [README](README.md).
+stores)**. Détails de déploiement dans le [README](README.md).
+
+> Historique : l'app était au départ une démo locale (localStorage, multi-
+> utilisateur simulé). Elle est devenue un vrai produit multi-utilisateur avec
+> backend. Voir `docs/ROADMAP-PRODUIT.md`.
 
 ## Commandes
 
 | Commande | Rôle |
 |---|---|
-| `npm run dev` | Serveur de dev (Express + Vite middleware) sur `PORT` (déf. 3000) |
+| `npm run dev` | Serveur de dev (Express + Vite middleware), auto-migration PGlite |
 | `npm run build` | Build web (`dist/`) **+** bundle serveur (`dist/server.cjs`) |
-| `npm run build:web` | Build web seul (utilisé pour le mobile) |
-| `npm start` | Lance le serveur de prod (`node dist/server.cjs`) |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint |
-| `npm run format` | Prettier (`--write`) |
-| `npm test` | Tests Vitest (one-shot) · `test:watch` pour le mode watch |
-| `npm run coverage` | Couverture (domain/ + lib/) |
-| `npm run build:mobile` | `vite build` + `cap sync` (met à jour le projet natif) |
-| `npm run cap:open:android` | Ouvre le projet Android dans Android Studio |
+| `npm run build:web` | Build web seul (pour le mobile) |
+| `npm run build:mobile` | `vite build` + `cap sync` |
+| `npm start` | Serveur de prod (`node dist/server.cjs`) — auto-migration au démarrage |
+| `npm run typecheck` · `lint` · `format` | `tsc --noEmit` · ESLint · Prettier |
+| `npm test` · `test:watch` · `coverage` | Vitest |
+| `npm run db:generate` | Génère une migration depuis `server/db/schema.ts` |
+| `npm run db:migrate` | Applique les migrations (CLI ; aussi auto au démarrage) |
 
-- Choisir le port : `PORT=3002 npm run dev` (le serveur respecte `process.env.PORT`).
-- En dev, le HMR peut être désactivé via `DISABLE_HMR=true` (utilisé par l'environnement d'agent pour éviter le scintillement).
+- Port configurable : `PORT=3002 npm run dev`. Base prod : variable `DATABASE_URL`.
+- `DISABLE_HMR=true` désactive le HMR (utilisé par l'environnement d'agent).
 
-## Architecture (`src/`)
+## Architecture
 
+### Front (`src/`)
 ```
-domain/      Logique métier PURE (sans React) — testée unitairement
-             budget · availability · itinerary · activities
-lib/         api (URL configurable) · id (uuid) · schemas (Zod)
-hooks/       useLocalStorage (persistance + validation Zod)
-store/       TripContext — useTripStore() : état + handlers centralisés
-pages/       LoginScreen · CreateTripPage · AccountPage
+domain/      Logique métier PURE, testée (budget · availability · itinerary · activities)
+lib/         apiClient (client API typé) · api (suggestActivities) · avatar · id · schemas (Zod)
+store/       useTripController (état + handlers API-backed) ; TripContext → useTripStore()
+pages/       AuthScreen · CreateTripPage · AccountPage
 features/    DashboardSidebar · TripWorkspace · {Voting,Chat,Media,Itinerary}Tab
 components/  AppHeader · AvailabilityCalendar · OfflineIndicator · LoadingFallback
-App.tsx      Fournit le store + assemble pages/dashboard
-types.ts     Types du domaine (Trip, Member, ActivityProposal, …)
-data/        mockTrips (données de démo initiales)
+App.tsx      Provider + AppShell (gating auth / chargement / état vide)
+```
+
+### Back (`server/`)
+```
+db/          schema (Drizzle) · client (PGlite/Postgres) · migrate-runner · migrations/
+auth/        password (argon2) · session · middleware (attachUser, requireAuth)
+routes/      auth · trips · trip-content (collaboratif) · uploads
+services/    trip-aggregate (DB normalisée → forme Trip dénormalisée du front)
+server.ts    (racine) entrée : helmet, CORS, cookies, auth, routes, static, auto-migration
 ```
 
 ## Conventions importantes
 
-- **État partagé via `useTripStore()`** (Context), pas de prop-drilling.
-  Le contrat `TripStore` (dans `store/TripContext.tsx`) doit rester aligné avec
-  l'objet `store` construit dans `App.tsx` — `tsc` le garantit. Pour exposer une
-  nouvelle valeur/handler à un composant : l'ajouter à l'interface **et** à
-  l'objet `store`.
-- **Logique métier dans `domain/`** : fonctions pures, sans dépendance React,
-  faciles à tester. Toute nouvelle règle de calcul va là (et reçoit un test).
-- **Validation au chargement** : les données `localStorage` sont validées par
-  Zod (`lib/schemas.ts`) ; en cas de forme invalide, on retombe sur les défauts.
-- **IDs** : toujours `uid("prefix")` (`lib/id.ts`), jamais `Date.now()`.
-- **Appels API** : passer par `lib/api.ts` (`suggestActivities`). L'URL de base
-  est `import.meta.env.VITE_API_BASE_URL` — vide en web (chemins relatifs),
-  absolue (AlwaysData) pour le build mobile.
-- **Onglets/pages lourds** : chargés en `React.lazy` sous `Suspense`
-  (`LoadingFallback`).
+- **État via `useTripStore()`** (Context). Le contrôleur `useTripController`
+  contient tout l'état + les handlers ; `TripStore = ReturnType<…>` (zéro
+  divergence). Les handlers appellent l'**API** et mettent à jour le voyage actif.
+- **Logique métier pure dans `src/domain/`** (sans React, testée). Réutilisée
+  côté serveur quand pertinent.
+- **Appels API via `src/lib/apiClient.ts`** (cookies `credentials: include`,
+  `Authorization: Bearer` si `VITE_API_BASE_URL` défini = mobile). Erreurs
+  typées `ApiError`.
+- **API serveur** : validation **Zod** de chaque corps ; **autorisation**
+  systématique (membre du voyage) ; chaque mutation renvoie l'agrégat à jour.
+- **IDs** : `uid("prefix")` côté front ; UUID `defaultRandom()` côté DB.
+- **Destination** : choisie à la création (optionnelle) ou via action explicite
+  (PATCH). Le **vote ne la définit jamais automatiquement** (signal seulement).
+- **Onglets/pages lourds** : `React.lazy` sous `Suspense`.
 
 ## Tests
 
-Tests Vitest sur `src/domain/**` (logique pure). Ajouter un `*.test.ts` à côté
-du module testé. Lancer `npm test`. La CI (`.github/workflows/ci.yml`) exécute
+Vitest. Aujourd'hui : `src/domain/**` (logique pure). Voir aussi les tests
+backend (Supertest) si présents. La CI (`.github/workflows/ci.yml`) exécute
 typecheck + lint + test + build sur chaque push/PR.
 
 ## Pièges / notes
 
-- Ne pas committer `dist/` (gitignoré). Le projet natif `android/` est versionné,
-  mais ses artefacts de build sont gitignorés par Capacitor.
-- L'API de suggestions fonctionne **hors-ligne** (données curées déterministes) ;
-  une couche Gemini optionnelle s'active si `GEMINI_API_KEY` est fournie.
-- iOS nécessite un Mac (ou un build cloud) ; Android se build sous Windows via
-  Android Studio.
+- Ne pas committer `dist/`, `data/` (DB + uploads locaux). Le projet `android/`
+  est versionné (artefacts gitignorés par Capacitor).
+- Auto-migration au démarrage : un `server/db/schema.ts` modifié nécessite
+  `npm run db:generate` (commiter la migration générée).
+- L'API de suggestions fonctionne **hors-ligne** (données curées) ; couche
+  Gemini optionnelle si `GEMINI_API_KEY`.
+- iOS nécessite un Mac ; Android se build sous Windows via Android Studio.
+- Pages légales (`public/*.html`) = modèles à compléter ; domaine d'exemple
+  `co-tripper.example` (robots/sitemap) à remplacer.

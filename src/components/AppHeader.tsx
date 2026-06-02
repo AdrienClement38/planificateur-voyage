@@ -1,12 +1,10 @@
-import { AlertCircle, ChevronDown, LogOut } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
 import OfflineIndicator from "./OfflineIndicator";
 import { useTripStore } from "../store/TripContext";
 
-/** Bannière hors-ligne + en-tête de navigation (pages, budget, déconnexion). */
+/** En-tête de navigation (pages, budget, connectivité, déconnexion). */
 export default function AppHeader() {
   const {
-    isOffline,
-    setIsOffline,
     setActivePage,
     activePage,
     currentMember,
@@ -20,24 +18,6 @@ export default function AppHeader() {
 
   return (
     <>
-      {/* NETWORK & OFFLINE BANNER AND RESILIENT ALERT */}
-      {isOffline && (
-        <div className="bg-amber-500 text-white px-4 py-3 rounded-2xl flex items-center justify-between gap-3 shadow-md animate-bounce">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 animate-pulse shrink-0" />
-            <span className="text-xs sm:text-sm font-semibold">
-              <strong>Mode voyageur (Hors Ligne d'altitude) actif.</strong> Toutes vos modifications, votes, photos et documents sont instantanément stockés de manière sécurisée dans votre navigateur (LocalStorage) !
-            </span>
-          </div>
-          <button
-            onClick={() => setIsOffline(false)}
-            className="bg-white/20 hover:bg-white/35 text-white text-[10.5px] font-bold py-1 px-3 rounded-lg shrink-0 transition"
-          >
-            Rebrancher
-          </button>
-        </div>
-      )}
-
       {/* TOP LEVEL NAVIGATION & SPACIOUS BRANDING HEADER */}
       <header className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col lg:flex-row justify-between lg:items-center gap-4 relative z-50">
         <div className="flex items-center gap-3">
@@ -172,7 +152,7 @@ export default function AppHeader() {
           </div>
           )}
 
-          <OfflineIndicator isOffline={isOffline} setIsOffline={setIsOffline} />
+          <OfflineIndicator />
 
           <button
             onClick={handleLogout}
