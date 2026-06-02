@@ -17,6 +17,7 @@ import {
 } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
 import { loadTripAggregate } from "../services/trip-aggregate";
+import { broadcastTrip } from "../realtime";
 
 const router = Router();
 router.use(requireAuth);
@@ -43,9 +44,11 @@ async function requireMembership(
   next();
 }
 
-/** Répond avec l'agrégat à jour du voyage (état serveur courant). */
+/** Répond avec l'agrégat à jour ET le diffuse en temps réel à tous les membres connectés. */
 async function respondTrip(res: Response, tripId: string): Promise<void> {
-  res.json({ trip: await loadTripAggregate(tripId) });
+  const trip = await loadTripAggregate(tripId);
+  broadcastTrip(tripId, trip); // → mise à jour live chez tous, sans rechargement
+  res.json({ trip });
 }
 
 // Note : le vote ne définit PAS automatiquement la destination du voyage.

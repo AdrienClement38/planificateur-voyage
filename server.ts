@@ -10,6 +10,8 @@ import tripContentRouter from "./server/routes/trip-content";
 import uploadsRouter from "./server/routes/uploads";
 import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
+import { createServer } from "node:http";
+import { initRealtime } from "./server/realtime";
 
 dotenv.config();
 
@@ -517,7 +519,9 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const httpServer = createServer(app);
+  initRealtime(httpServer); // WebSocket temps réel (/ws)
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`[Co-Tripper Server] En écoute sur http://localhost:${PORT}`);
   });
 }

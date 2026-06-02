@@ -12,6 +12,7 @@ import {
 } from "../auth/session";
 import { requireAuth, getSessionToken } from "../auth/middleware";
 import { loadTripAggregate } from "../services/trip-aggregate";
+import { broadcastTrip } from "../realtime";
 
 const router = Router();
 
@@ -126,6 +127,14 @@ router.patch("/me", requireAuth, async (req, res) => {
     await db.update(users).set(parsed.data).where(eq(users.id, req.user!.id));
   }
   const [u] = await db.select().from(users).where(eq(users.id, req.user!.id));
+  // Propage le profil à jour (nom/avatar) en temps réel dans tous ses voyages.
+  const memberTrips = await db
+    .select({ tripId: tripMembers.tripId })
+    .from(tripMembers)
+    .where(eq(tripMembers.userId, req.user!.id));
+  for (const t of memberTrips) {
+    broadcastTrip(t.tripId, await loadTripAggregate(t.tripId));
+  }
   res.json({
     user: { id: u.id, email: u.email, displayName: u.displayName, avatar: u.avatar },
   });

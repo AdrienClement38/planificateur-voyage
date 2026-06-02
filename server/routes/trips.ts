@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { trips, tripMembers } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
 import { loadTripAggregate } from "../services/trip-aggregate";
+import { broadcastTrip, broadcastTripDeleted } from "../realtime";
 
 const router = Router();
 router.use(requireAuth);
@@ -107,7 +108,11 @@ router.patch("/:id", async (req, res) => {
   if (Object.keys(parsed.data).length > 0) {
     await db.update(trips).set(parsed.data).where(eq(trips.id, req.params.id));
   }
-  res.json({ trip: await loadTripAggregate(req.params.id) });
+  {
+    const trip = await loadTripAggregate(req.params.id);
+    broadcastTrip(req.params.id, trip);
+    res.json({ trip });
+  }
 });
 
 // DELETE /api/trips/:id — suppression (propriétaire uniquement)
@@ -122,6 +127,7 @@ router.delete("/:id", async (req, res) => {
     return;
   }
   await db.delete(trips).where(eq(trips.id, req.params.id));
+  broadcastTripDeleted(req.params.id);
   res.status(204).end();
 });
 
@@ -137,7 +143,11 @@ router.post("/:id/join", async (req, res) => {
       .insert(tripMembers)
       .values({ tripId: req.params.id, userId: req.user!.id, role: "member" });
   }
-  res.json({ trip: await loadTripAggregate(req.params.id) });
+  {
+    const trip = await loadTripAggregate(req.params.id);
+    broadcastTrip(req.params.id, trip);
+    res.json({ trip });
+  }
 });
 
 export default router;
