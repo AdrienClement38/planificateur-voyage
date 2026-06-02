@@ -14,14 +14,8 @@ const ItineraryTab = lazy(() => import("./ItineraryTab"));
 
 /** Colonne droite du tableau de bord : en-tête du voyage, barre d'onglets et contenu de l'onglet actif. */
 export default function TripWorkspace() {
-  const {
-    activeTrip,
-    activeTab,
-    setActiveTab,
-    currentMember,
-    isOffline,
-    handleUpdateTrip,
-  } = useTripStore();
+  const { activeTrip, activeTab, setActiveTab } = useTripStore();
+  if (!activeTrip) return null;
 
   return (
     <div className="lg:col-span-8 space-y-5">
@@ -136,12 +130,7 @@ export default function TripWorkspace() {
       {/* 1. CALENDAR TAB */}
       {activeTab === "calendar" && (
         <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs relative animate-fadeIn">
-          <AvailabilityCalendar
-            trip={activeTrip}
-            currentMember={currentMember}
-            isOffline={isOffline}
-            onUpdateTrip={handleUpdateTrip}
-          />
+          <AvailabilityCalendar />
         </div>
       )}
 

@@ -19,6 +19,7 @@ export default function MediaTab() {
     photoCaptionInput,
     setPhotoCaptionInput,
   } = useTripStore();
+  if (!activeTrip) return null;
 
   return (
     <div id="bento-card-sharing" className="grid grid-cols-1 md:grid-cols-2 gap-5 animate-fadeIn">

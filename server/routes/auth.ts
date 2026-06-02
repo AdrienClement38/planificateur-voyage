@@ -97,4 +97,25 @@ router.get("/me", requireAuth, (req, res) => {
   res.json({ user: req.user });
 });
 
+// PATCH /api/auth/me — mise à jour du profil (nom affiché, avatar)
+router.patch("/me", requireAuth, async (req, res) => {
+  const parsed = z
+    .object({
+      displayName: z.string().min(1).max(60).optional(),
+      avatar: z.string().max(1000).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Champs invalides." });
+    return;
+  }
+  if (Object.keys(parsed.data).length > 0) {
+    await db.update(users).set(parsed.data).where(eq(users.id, req.user!.id));
+  }
+  const [u] = await db.select().from(users).where(eq(users.id, req.user!.id));
+  res.json({
+    user: { id: u.id, email: u.email, displayName: u.displayName, avatar: u.avatar },
+  });
+});
+
 export default router;

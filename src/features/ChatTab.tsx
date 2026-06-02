@@ -1,5 +1,5 @@
 import { Users, MessageSquare, Send } from "lucide-react";
-import { MOCK_MEMBERS } from "../data/mockTrips";
+import { avatarUrl } from "../lib/avatar";
 import { useTripStore } from "../store/TripContext";
 
 /** Onglet de messagerie de groupe. */
@@ -12,6 +12,7 @@ export default function ChatTab() {
     chatText,
     setChatText,
   } = useTripStore();
+  if (!activeTrip || !currentMember) return null;
 
   return (
     <div id="bento-card-chat" className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-6 h-[500px] animate-fadeIn">
@@ -19,17 +20,17 @@ export default function ChatTab() {
       <div className="hidden md:flex flex-col border-r border-slate-100 pr-4 space-y-4 h-full overflow-hidden">
         <div className="pb-2 border-b border-slate-100">
           <h4 className="text-[11px] font-bold text-indigo-900 uppercase tracking-widest flex items-center gap-1">
-            <Users className="w-3.5 h-3.5" /> Groupe de planners ({MOCK_MEMBERS.length})
+            <Users className="w-3.5 h-3.5" /> Groupe de planners ({activeTrip.members.length})
           </h4>
           <p className="text-[9px] text-slate-400 font-mono mt-0.5">En Ligne & Synchronisés</p>
         </div>
         <div className="space-y-2 flex-grow overflow-y-auto">
-          {MOCK_MEMBERS.map((m) => {
+          {activeTrip.members.map((m) => {
             const isSimulatedConnected = m.id === currentMemberId;
             return (
               <div key={m.id} className={`flex items-center gap-2 p-1.5 rounded-xl transition ${isSimulatedConnected ? "bg-indigo-50" : ""}`}>
                 <div className="relative">
-                  <img src={m.avatar} alt={m.name} className="w-7 h-7 rounded-full object-cover" />
+                  <img src={avatarUrl(m.name, m.avatar)} alt={m.name} className="w-7 h-7 rounded-full object-cover" />
                   <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 border border-white rounded-full"></span>
                 </div>
                 <div className="truncate">
@@ -83,7 +84,7 @@ export default function ChatTab() {
                   className={`flex items-start gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}
                 >
                   <img
-                    src={msg.senderAvatar}
+                    src={avatarUrl(msg.senderName, msg.senderAvatar)}
                     alt={msg.senderName}
                     className="w-7 h-7 rounded-full shrink-0 shadow-2xs object-cover"
                   />

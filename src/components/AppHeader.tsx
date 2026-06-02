@@ -91,12 +91,13 @@ export default function AppHeader() {
                 : "bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900"
             }`}
           >
-            👤 Mon Compte ({currentMember.name})
+            👤 Mon Compte ({currentMember?.name ?? "moi"})
           </button>
 
           <div className="h-6 w-[1.5px] bg-slate-200 hidden sm:block mx-1"></div>
 
           {/* INTEGRATED "BUDGET PAR PARTICIPANT" DROPDOWN PILL */}
+          {activeTrip && (
           <div className="relative">
             <button
               onClick={() => setIsBudgetDropdownOpen(!isBudgetDropdownOpen)}
@@ -169,6 +170,7 @@ export default function AppHeader() {
               </div>
             )}
           </div>
+          )}
 
           <OfflineIndicator isOffline={isOffline} setIsOffline={setIsOffline} />
 

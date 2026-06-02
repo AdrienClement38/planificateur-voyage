@@ -1,23 +1,22 @@
 import React, { useState } from "react";
-import { Member, Availability, Trip } from "../types";
 import { Calendar, Plus, Trash2, AlertTriangle } from "lucide-react";
-import { uid } from "../lib/id";
+import type { Member } from "../types";
+import { avatarUrl } from "../lib/avatar";
+import { useTripStore } from "../store/TripContext";
 
-interface AvailabilityCalendarProps {
-  trip: Trip;
-  currentMember: Member;
-  isOffline: boolean;
-  onUpdateTrip: (updated: Trip) => void;
-}
-
-export default function AvailabilityCalendar({
-  trip,
-  currentMember,
-  onUpdateTrip,
-}: AvailabilityCalendarProps) {
+export default function AvailabilityCalendar() {
+  const {
+    activeTrip: trip,
+    currentMember,
+    handleAddAvailability: addAvailability,
+    handleDeleteAvailability: removeAvailability,
+    handlePatchTrip,
+  } = useTripStore();
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  if (!trip || !currentMember) return null;
 
   const handleAddAvailability = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,29 +32,13 @@ export default function AvailabilityCalendar({
       return;
     }
 
-    const newAvail: Availability = {
-      id: uid("avail"),
-      memberId: currentMember.id,
-      start: startDate,
-      end: endDate,
-    };
-
-    const updatedAvailabilities = [...trip.availabilities, newAvail];
-    onUpdateTrip({
-      ...trip,
-      availabilities: updatedAvailabilities,
-    });
-
+    addAvailability(startDate, endDate);
     setStartDate("");
     setEndDate("");
   };
 
   const handleDeleteAvailability = (id: string) => {
-    const updated = trip.availabilities.filter((a) => a.id !== id);
-    onUpdateTrip({
-      ...trip,
-      availabilities: updated,
-    });
+    removeAvailability(id);
   };
 
   // Ideal Overlap Date Finder Algorithm
@@ -220,7 +203,7 @@ export default function AvailabilityCalendar({
 
             <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl mb-4 text-xs text-slate-600">
               <img
-                src={currentMember.avatar}
+                src={avatarUrl(currentMember.name, currentMember.avatar)}
                 alt={currentMember.name}
                 className="w-7 h-7 rounded-full border border-white shadow-xs"
               />
@@ -349,9 +332,8 @@ export default function AvailabilityCalendar({
                         onClick={() => {
                           // set dates
                           const dateStringText = `Du ${formatFrenchDate(period.startDate)} au ${formatFrenchDate(period.endDate)}`;
-                          onUpdateTrip({
-                            ...trip,
-                            description: `${trip.description.split(" (Dates projet :")[0]} (Dates projet : ${dateStringText})`
+                          handlePatchTrip({
+                            description: `${trip.description.split(" (Dates projet :")[0]} (Dates projet : ${dateStringText})`,
                           });
                           alert(`Dates de voyage coordonnées pour : ${dateStringText}`);
                         }}
@@ -372,7 +354,7 @@ export default function AvailabilityCalendar({
                         <div className="flex items-center justify-between gap-1.5 mt-2 pt-1.5 border-t border-slate-700/60">
                           <div className="flex -space-x-1">
                             {period.members.map((m) => (
-                              <img key={m.id} src={m.avatar} className="w-5 h-5 rounded-full border border-slate-700" title={m.name} alt="" />
+                              <img key={m.id} src={avatarUrl(m.name, m.avatar)} className="w-5 h-5 rounded-full border border-slate-700" title={m.name} alt="" />
                             ))}
                           </div>
                           
@@ -425,7 +407,7 @@ export default function AvailabilityCalendar({
                     <div key={member.id} className="space-y-1">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-1.5">
-                          <img src={member.avatar} alt={member.name} className="w-5 h-5 rounded-full" />
+                          <img src={avatarUrl(member.name, member.avatar)} alt={member.name} className="w-5 h-5 rounded-full" />
                           <span className="text-xs font-semibold text-slate-700">{member.name}</span>
                         </div>
                         <span className="text-[10px] text-slate-400">

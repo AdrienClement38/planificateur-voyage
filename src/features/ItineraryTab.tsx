@@ -25,6 +25,7 @@ export default function ItineraryTab() {
     manualEventCost,
     setManualEventCost,
   } = useTripStore();
+  if (!activeTrip || !currentMember) return null;
 
   return (
     <div id="bento-card-itinerary" className="bg-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden space-y-6 animate-fadeIn">

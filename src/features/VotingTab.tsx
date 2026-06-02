@@ -13,6 +13,7 @@ export default function VotingTab() {
     newDestName,
     setNewDestName,
   } = useTripStore();
+  if (!activeTrip || !currentMember) return null;
 
   return (
     <div id="bento-card-voting" className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-5 animate-fadeIn">

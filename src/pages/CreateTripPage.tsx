@@ -10,7 +10,7 @@ export default function CreateTripPage() {
     setNewTripDays,
     newTripBudget,
     setNewTripBudget,
-    members,
+    currentMember,
     setActivePage,
   } = useTripStore();
 
@@ -75,15 +75,20 @@ export default function CreateTripPage() {
         </div>
 
         <div className="bg-slate-50 rounded-2xl p-4 border border-slate-150 text-xs text-slate-500 space-y-2">
-          <p className="font-bold text-slate-700">👥 Participants associés par défaut :</p>
+          <p className="font-bold text-slate-700">👤 Créateur du voyage :</p>
           <div className="flex flex-wrap gap-2">
-            {members.map((m) => (
-              <div key={m.id} className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700">
-                <img src={m.avatar} alt={m.name} className="w-5 h-5 rounded-full object-cover" />
-                <span>{m.name}</span>
+            {currentMember && (
+              <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700">
+                <img
+                  src={currentMember.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=" + encodeURIComponent(currentMember.name)}
+                  alt={currentMember.name}
+                  className="w-5 h-5 rounded-full object-cover"
+                />
+                <span>{currentMember.name}</span>
               </div>
-            ))}
+            )}
           </div>
+          <p className="text-[11px] text-slate-400">Invitez vos amis ensuite via le code de partage du voyage.</p>
         </div>
 
         <div className="flex gap-3 pt-2">
