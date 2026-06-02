@@ -2,12 +2,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type DragEvent,
   type FormEvent,
   type SetStateAction,
 } from "react";
+import { connectTripSocket } from "../lib/realtime";
 import type { ActivityProposal, Member, Trip } from "../types";
 import { computeBudgetBreakdown, type BudgetBreakdown } from "../domain/budget";
 import { findBestTravelWindow } from "../domain/availability";
@@ -74,6 +76,7 @@ export function useTripController() {
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [isLoadingTrip, setIsLoadingTrip] = useState(false);
   const [mutationError, setMutationError] = useState("");
+  const socketCloser = useRef<(() => void) | null>(null);
 
   // --- Navigation ---
   const [activePage, setActivePage] = useState<ActivePage>("dashboard");
@@ -110,27 +113,56 @@ export function useTripController() {
     return list;
   }, []);
 
-  const openTrip = useCallback(async (id: string) => {
-    setSelectedTripId(id);
-    setIsLoadingTrip(true);
-    setMutationError("");
-    try {
-      const { trip } = await tripsApi.get(id);
-      setActiveTrip(trip);
-      cacheTrip(trip);
-    } catch (err) {
-      const cached = readCachedTrip(id);
-      if (cached) {
-        setActiveTrip(cached);
-        setMutationError("Hors-ligne : données en cache affichées.");
-      } else {
-        setActiveTrip(null);
-        setMutationError(err instanceof ApiError ? err.message : "Chargement impossible.");
+  /**
+   * (Re)connecte le WebSocket temps réel au voyage donné. Idempotent : ferme
+   * d'abord l'éventuel socket précédent. Toute modification (par n'importe quel
+   * membre) arrive en direct et patche l'état actif — aucun rechargement.
+   */
+  const subscribeToTrip = useCallback(
+    (id: string) => {
+      socketCloser.current?.();
+      socketCloser.current = connectTripSocket(id, {
+        onTrip: (t) => {
+          setActiveTrip(t);
+          cacheTrip(t);
+        },
+        onDeleted: () => {
+          socketCloser.current?.();
+          socketCloser.current = null;
+          setActiveTrip(null);
+          setSelectedTripId(null);
+          void refreshTripsList();
+        },
+      });
+    },
+    [refreshTripsList],
+  );
+
+  const openTrip = useCallback(
+    async (id: string) => {
+      setSelectedTripId(id);
+      setIsLoadingTrip(true);
+      setMutationError("");
+      try {
+        const { trip } = await tripsApi.get(id);
+        setActiveTrip(trip);
+        cacheTrip(trip);
+        subscribeToTrip(id);
+      } catch (err) {
+        const cached = readCachedTrip(id);
+        if (cached) {
+          setActiveTrip(cached);
+          setMutationError("Hors-ligne : données en cache affichées.");
+        } else {
+          setActiveTrip(null);
+          setMutationError(err instanceof ApiError ? err.message : "Chargement impossible.");
+        }
+      } finally {
+        setIsLoadingTrip(false);
       }
-    } finally {
-      setIsLoadingTrip(false);
-    }
-  }, []);
+    },
+    [subscribeToTrip],
+  );
 
   /** Exécute une mutation API : met à jour le voyage actif + cache, remonte l'erreur. */
   const applyMutation = useCallback(
@@ -176,6 +208,9 @@ export function useTripController() {
     };
   }, [loadAfterAuth]);
 
+  // Ferme proprement le WebSocket temps réel au démontage du contrôleur.
+  useEffect(() => () => socketCloser.current?.(), []);
+
   // ----------------------------------------------------------------- Auth
 
   const handleSignup = useCallback(
@@ -212,6 +247,8 @@ export function useTripController() {
     } catch {
       /* on déconnecte localement quoi qu'il arrive */
     }
+    socketCloser.current?.();
+    socketCloser.current = null;
     setCurrentUser(null);
     setAuthStatus("anon");
     setTripsList([]);
@@ -241,6 +278,8 @@ export function useTripController() {
       setMutationError(err instanceof ApiError ? err.message : "Suppression impossible.");
       return;
     }
+    socketCloser.current?.();
+    socketCloser.current = null;
     setCurrentUser(null);
     setAuthStatus("anon");
     setTripsList([]);
@@ -288,6 +327,7 @@ export function useTripController() {
         setActiveTrip(trip);
         setSelectedTripId(trip.id);
         cacheTrip(trip);
+        subscribeToTrip(trip.id);
         setNewTripName("");
         setNewTripDestination("");
         setActivePage("dashboard");
@@ -295,7 +335,7 @@ export function useTripController() {
         setMutationError(err instanceof ApiError ? err.message : "Création impossible.");
       }
     },
-    [newTripName, newTripDestination, newTripDays, newTripBudget, refreshTripsList],
+    [newTripName, newTripDestination, newTripDays, newTripBudget, refreshTripsList, subscribeToTrip],
   );
 
   const handleDeleteTrip = useCallback(
@@ -325,13 +365,14 @@ export function useTripController() {
         setActiveTrip(trip);
         setSelectedTripId(trip.id);
         cacheTrip(trip);
+        subscribeToTrip(trip.id);
         setJoinTripIdInput("");
         setActivePage("dashboard");
       } catch (err) {
         setMutationError(err instanceof ApiError ? err.message : "Voyage introuvable.");
       }
     },
-    [refreshTripsList],
+    [refreshTripsList, subscribeToTrip],
   );
 
   const handleUpdateTransportValue = useCallback(
