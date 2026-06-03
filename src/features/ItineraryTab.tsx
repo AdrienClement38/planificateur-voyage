@@ -9,6 +9,7 @@ import {
   Pencil,
   ExternalLink,
   Check,
+  RefreshCw,
 } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
 import {
@@ -58,6 +59,10 @@ export default function ItineraryTab() {
   const [editEventId, setEditEventId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ day: 1, start: "10:00", end: "", description: "", cost: 0 });
   const [editError, setEditError] = useState("");
+
+  // Fenêtre de suggestions (combien on en montre, et à partir d'où).
+  const SUGGESTIONS_PER_PAGE = 6;
+  const [suggestionOffset, setSuggestionOffset] = useState(0);
 
   if (!activeTrip || !currentMember) return null;
 
@@ -177,6 +182,40 @@ export default function ItineraryTab() {
     setEditEventId(null);
   };
 
+  // Descriptions des étapes déjà au programme. Une activité est « planifiée » si
+  // une étape porte son nom — quel que soit le format ajouté à la planification
+  // (« Nom [Source] » manuel, « Nom — description » auto-plan).
+  const plannedDescriptions = activeTrip.itinerary
+    .flatMap((d) => d.events)
+    .map((e) => e.description.trim().toLowerCase());
+  const isPlanned = (name: string) => {
+    const n = name.trim().toLowerCase();
+    return plannedDescriptions.some(
+      (d) => d === n || d.startsWith(`${n} [`) || d.startsWith(`${n} —`) || d.startsWith(`${n} -`),
+    );
+  };
+
+  // Pool de suggestions disponibles = activités du filtre courant, non planifiées.
+  const suggestionPool = activeTrip.activities.filter((act) => {
+    if (activityFilter === "gyg" && act.source !== "GetYourGuide") return false;
+    if (activityFilter === "airbnb" && act.source !== "Airbnb Expériences") return false;
+    if (activityFilter === "google" && act.source !== "Google Activités") return false;
+    return !isPlanned(act.name);
+  });
+
+  // Fenêtre visible (avec rotation circulaire pour « voir d'autres suggestions »).
+  const canShowMore = suggestionPool.length > SUGGESTIONS_PER_PAGE;
+  const safeOffset = suggestionPool.length > 0 ? suggestionOffset % suggestionPool.length : 0;
+  const visibleSuggestions = canShowMore
+    ? [...suggestionPool, ...suggestionPool].slice(safeOffset, safeOffset + SUGGESTIONS_PER_PAGE)
+    : suggestionPool;
+
+  // Change de filtre source en réinitialisant la fenêtre.
+  const setFilter = (f: typeof activityFilter) => {
+    setActivityFilter(f);
+    setSuggestionOffset(0);
+  };
+
   return (
     <div id="bento-card-itinerary" className="bg-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden space-y-6 animate-fadeIn">
       <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none -translate-y-20 translate-x-10"></div>
@@ -249,13 +288,13 @@ export default function ItineraryTab() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
-                📂 Idées de sorties ({activeTrip.activities.length})
+                📂 Idées de sorties ({suggestionPool.length})
               </h4>
 
               {/* Filters tab buttons */}
               <div className="flex gap-1 bg-white/5 p-1 rounded-xl shrink-0 overflow-x-auto max-w-[340px] sm:max-w-none">
                 <button
-                  onClick={() => setActivityFilter("all")}
+                  onClick={() => setFilter("all")}
                   className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                     activityFilter === "all" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
                   }`}
@@ -263,7 +302,7 @@ export default function ItineraryTab() {
                   Toutes
                 </button>
                 <button
-                  onClick={() => setActivityFilter("gyg")}
+                  onClick={() => setFilter("gyg")}
                   className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                     activityFilter === "gyg" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
                   }`}
@@ -271,7 +310,7 @@ export default function ItineraryTab() {
                   GetYourGuide 🎫
                 </button>
                 <button
-                  onClick={() => setActivityFilter("airbnb")}
+                  onClick={() => setFilter("airbnb")}
                   className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                     activityFilter === "airbnb" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
                   }`}
@@ -279,7 +318,7 @@ export default function ItineraryTab() {
                   Airbnb expériences 🏠
                 </button>
                 <button
-                  onClick={() => setActivityFilter("google")}
+                  onClick={() => setFilter("google")}
                   className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                     activityFilter === "google" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
                   }`}
@@ -291,14 +330,13 @@ export default function ItineraryTab() {
 
             {/* Suggestions list scroll box */}
             <div className="space-y-3.5 max-h-[480px] overflow-y-auto pr-1">
-              {activeTrip.activities
-                .filter(act => {
-                  if (activityFilter === "gyg") return act.source === "GetYourGuide";
-                  if (activityFilter === "airbnb") return act.source === "Airbnb Expériences";
-                  if (activityFilter === "google") return act.source === "Google Activités";
-                  return true;
-                })
-                .map((act) => {
+              {visibleSuggestions.length === 0 && (
+                <div className="text-center py-8 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-2xl px-4">
+                  🎉 Toutes les idées de cette catégorie sont déjà au programme. Changez de filtre ou
+                  relancez une recherche pour en découvrir d'autres.
+                </div>
+              )}
+              {visibleSuggestions.map((act) => {
                   const isVotedByCurrent = act.votes.includes(currentMember.id);
                   const totalVotes = act.votes.length;
                   const isGYG = act.source === "GetYourGuide";
@@ -462,6 +500,16 @@ export default function ItineraryTab() {
                   );
                 })}
             </div>
+
+            {canShowMore && (
+              <button
+                onClick={() => setSuggestionOffset((o) => o + SUGGESTIONS_PER_PAGE)}
+                className="w-full flex items-center justify-center gap-1.5 bg-white/5 hover:bg-white/10 text-indigo-200 text-[11px] font-bold py-2.5 rounded-xl border border-white/10 transition cursor-pointer"
+                title="Afficher d'autres idées du catalogue"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres suggestions ({suggestionPool.length})
+              </button>
+            )}
           </div>
 
           {/* COLUMN 2: COLLABORATIVE ITINERARY TIMELINE */}
