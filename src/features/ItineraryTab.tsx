@@ -28,13 +28,10 @@ export default function ItineraryTab() {
     isGenerating,
     generationError,
     handleGenerateItinerary,
-    activityFilter,
-    setActivityFilter,
     currentMember,
     handleToggleActivityVote,
     handleScheduleActivity,
     handleAutoPlanFromVotes,
-    handleFetchMoreActivities,
     handleDeleteEvent,
     handleUpdateEvent,
     handleAddManualEvent,
@@ -61,8 +58,6 @@ export default function ItineraryTab() {
   const [editForm, setEditForm] = useState({ day: 1, start: "10:00", end: "", description: "", cost: 0 });
   const [editError, setEditError] = useState("");
 
-  // Pagination par source pour « Voir d'autres idées ».
-  const [sourcePage, setSourcePage] = useState<Record<string, number>>({});
   // Compteur de rafraîchissement : réorganise visiblement la liste à chaque clic.
   const [refreshTick, setRefreshTick] = useState(0);
   // Vue « Mes favoris » (activités que j'ai aimées/votées).
@@ -70,26 +65,10 @@ export default function ItineraryTab() {
 
   if (!activeTrip || !currentMember) return null;
 
-  // Filtre courant ↔ libellé de source (null = toutes).
-  const FILTER_TO_SOURCE: Record<string, string | null> = {
-    all: null,
-    gyg: "GetYourGuide",
-    airbnb: "Airbnb Expériences",
-    google: "Google Activités",
-  };
-  // Va chercher un lot d'idées thématiques supplémentaires pour une source.
-  const fetchMore = async (sourceLabel: string) => {
-    const page = sourcePage[sourceLabel] ?? 0;
-    await handleFetchMoreActivities(sourceLabel, page);
-    setSourcePage((p) => ({ ...p, [sourceLabel]: page + 1 }));
-  };
-
-  // « Voir d'autres idées » : sur une source précise → idées thématiques en plus ;
-  // sur « Toutes » → (re)cherche les VRAIES activités géolocalisées du lieu.
+  // « Voir d'autres idées » → (re)cherche les VRAIES activités géolocalisées
+  // du lieu (OpenStreetMap + Wikipédia + Wikidata).
   const refreshSuggestions = async () => {
-    const src = FILTER_TO_SOURCE[activityFilter];
-    if (src) await fetchMore(src);
-    else await handleGenerateItinerary();
+    await handleGenerateItinerary();
   };
 
   /** Étapes d'un jour donné (pour la détection de conflit de créneau). */
@@ -235,13 +214,8 @@ export default function ItineraryTab() {
     return null;
   };
 
-  // Pool de suggestions disponibles = activités du filtre courant, non planifiées.
-  const suggestionPool = activeTrip.activities.filter((act) => {
-    if (activityFilter === "gyg" && act.source !== "GetYourGuide") return false;
-    if (activityFilter === "airbnb" && act.source !== "Airbnb Expériences") return false;
-    if (activityFilter === "google" && act.source !== "Google Activités") return false;
-    return !isPlanned(act.name);
-  });
+  // Pool de suggestions disponibles = activités non encore planifiées.
+  const suggestionPool = activeTrip.activities.filter((act) => !isPlanned(act.name));
 
   // Mes favoris = activités que j'ai aimées (vote), planifiées ou non.
   const favorites = activeTrip.activities.filter((a) => a.votes.includes(currentMember.id));
@@ -260,13 +234,15 @@ export default function ItineraryTab() {
     await refreshSuggestions();
   };
 
-  // Onglets de plateforme (déplacés en bas, sous la liste).
-  const SOURCE_TABS = [
-    { key: "all", label: "Toutes" },
-    { key: "gyg", label: "GetYourGuide 🎫" },
-    { key: "airbnb", label: "Airbnb 🏠" },
-    { key: "google", label: "Google ✈️" },
-  ] as const;
+  // Emoji de catégorie réelle (tag OSM) pour le badge des cartes.
+  const CATEGORY_EMOJI: Record<string, string> = {
+    Nature: "⛰️",
+    Culture: "🏛️",
+    Gastronomie: "🍽️",
+    Loisir: "🎟️",
+    Visite: "📍",
+    Shopping: "🛍️",
+  };
 
   return (
     <div id="bento-card-itinerary" className="bg-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden space-y-6 animate-fadeIn">
@@ -333,11 +309,6 @@ export default function ItineraryTab() {
               {showFavorites
                 ? `⭐ Mes favoris (${favorites.length})`
                 : `📂 Idées de sorties (${suggestionPool.length})`}
-              {!showFavorites && activityFilter !== "all" && (
-                <span className="text-slate-400 font-medium normal-case">
-                  · {FILTER_TO_SOURCE[activityFilter]}
-                </span>
-              )}
             </h4>
 
             {/* Suggestions list scroll box */}
@@ -346,15 +317,12 @@ export default function ItineraryTab() {
                 <div className="text-center py-8 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-2xl px-4">
                   {showFavorites
                     ? "Aucun favori pour l'instant. Cliquez sur 👍 sous une activité pour l'ajouter à tes favoris."
-                    : "🎉 Toutes les idées de cette catégorie sont déjà au programme. Changez de plateforme ci-dessous ou cliquez sur « Voir d'autres idées »."}
+                    : "🎉 Toutes les idées sont déjà au programme. Cliquez sur « Voir d'autres idées » pour en découvrir d'autres."}
                 </div>
               )}
               {listToRender.map((act) => {
                   const isVotedByCurrent = act.votes.includes(currentMember.id);
                   const totalVotes = act.votes.length;
-                  const isGYG = act.source === "GetYourGuide";
-                  const isAirbnb = act.source === "Airbnb Expériences";
-                  const isGoogle = act.source === "Google Activités";
                   const schedule = findSchedule(act.name);
 
                   return (
@@ -365,19 +333,9 @@ export default function ItineraryTab() {
                             <h5 className="font-bold text-xs text-indigo-50 leading-snug">{act.name}</h5>
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5 py-0.5">
-                            {isGYG && (
-                              <span className="bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap">
-                                GetYourGuide ⭐ {act.rating || 4.7} ({act.reviewsCount || 120} avis) | {act.duration || "2h"}
-                              </span>
-                            )}
-                            {isAirbnb && (
-                              <span className="bg-rose-500/10 text-rose-300 border border-rose-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap">
-                                Airbnb ⭐ {act.rating || 4.9} ({act.reviewsCount || 45} avis) | {act.duration || "2h"}
-                              </span>
-                            )}
-                            {isGoogle && (
-                              <span className="bg-sky-500/10 text-sky-300 border border-sky-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap">
-                                Google ⭐ {act.rating || 4.5} | {act.duration || "Visite libre"}
+                            {act.category && (
+                              <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap uppercase tracking-wide">
+                                {CATEGORY_EMOJI[act.category] ?? "📍"} {act.category}
                               </span>
                             )}
                           </div>
@@ -386,9 +344,12 @@ export default function ItineraryTab() {
                           </p>
                         </div>
 
-                        <span className="text-xs font-bold text-emerald-400 shrink-0 bg-emerald-950/60 border border-emerald-900/30 px-2 py-0.5 rounded">
-                          {act.cost === 0 ? "Gratuit" : `${act.cost}€`}
-                        </span>
+                        {/* Prix affiché uniquement s'il est réellement connu (> 0). */}
+                        {act.cost > 0 && (
+                          <span className="text-xs font-bold text-emerald-400 shrink-0 bg-emerald-950/60 border border-emerald-900/30 px-2 py-0.5 rounded">
+                            {act.cost}€
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-between pt-1.5 border-t border-white/5">
@@ -401,7 +362,7 @@ export default function ItineraryTab() {
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-0.5 text-[10px] text-indigo-400 hover:text-indigo-300 hover:underline transition ml-1.5"
                             >
-                              Voir l'offre ↗️
+                              Voir le lieu ↗️
                             </a>
                           )}
                         </span>
@@ -522,26 +483,17 @@ export default function ItineraryTab() {
                 })}
             </div>
 
-            {/* Contrôles en bas : plateforme / favoris + un seul bouton */}
+            {/* Contrôles en bas : vue (idées / favoris) + recherche réelle */}
             <div className="space-y-2.5 pt-1 border-t border-white/10">
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-                {SOURCE_TABS.map((t) => {
-                  const active = !showFavorites && activityFilter === t.key;
-                  return (
-                    <button
-                      key={t.key}
-                      onClick={() => {
-                        setShowFavorites(false);
-                        setActivityFilter(t.key);
-                      }}
-                      className={`px-2 py-1.5 text-[10.5px] font-bold rounded-lg transition cursor-pointer ${
-                        active ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  );
-                })}
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => setShowFavorites(false)}
+                  className={`px-2 py-1.5 text-[10.5px] font-bold rounded-lg transition cursor-pointer ${
+                    !showFavorites ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  📂 Toutes les idées
+                </button>
                 <button
                   onClick={() => setShowFavorites(true)}
                   className={`px-2 py-1.5 text-[10.5px] font-bold rounded-lg transition cursor-pointer ${
@@ -558,7 +510,7 @@ export default function ItineraryTab() {
                   onClick={seeMore}
                   disabled={isGenerating}
                   className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] font-bold py-2.5 rounded-xl transition cursor-pointer"
-                  title="Rafraîchir la liste et charger de nouvelles idées"
+                  title="Rechercher les vrais lieux de la destination (OpenStreetMap + Wikipédia)"
                 >
                   {isGenerating ? (
                     <>
@@ -567,7 +519,6 @@ export default function ItineraryTab() {
                   ) : (
                     <>
                       <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres idées
-                      {activityFilter !== "all" ? ` (${FILTER_TO_SOURCE[activityFilter]})` : ""}
                     </>
                   )}
                 </button>

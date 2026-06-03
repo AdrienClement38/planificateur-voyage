@@ -5,24 +5,26 @@
  *   - Overpass (OpenStreetMap) : POI réellement taggés tourisme / monument /
  *     parc / sommet / téléphérique, restreints à ceux ayant une fiche Wikidata
  *     (= lieux notables, pas du bruit) ;
+ *   - Wikidata : classement par notoriété (nombre de versions linguistiques) ;
  *   - Wikipédia : descriptions réelles (un seul appel groupé).
  *
- * Renvoie [] en cas d'échec : l'appelant retombe sur le catalogue hors-ligne.
+ * On ne renvoie QUE des informations factuelles : nom réel, description réelle,
+ * catégorie réelle (tag OSM), et un lien réel (site officiel ou article). Aucune
+ * note, aucun nombre d'avis, aucun prix « estimé » n'est inventé.
+ *
+ * Renvoie [] en cas d'échec (l'appelant affiche alors un état vide honnête).
  * Un cache mémoire évite de marteler les API.
  */
 
 type Cat = "Visite" | "Gastronomie" | "Culture" | "Loisir" | "Nature" | "Shopping";
-type Src = "GetYourGuide" | "Airbnb Expériences" | "Google Activités";
 
 export interface PlaceActivity {
   name: string;
   description: string;
-  cost: number;
   category: Cat;
-  source: Src;
-  rating: number;
-  reviewsCount: number;
+  /** Durée indicative (pour pré-remplir le planificateur), ajustable. */
   duration: string;
+  /** Lien réel : site officiel du lieu, sinon son article Wikipédia. */
   bookingUrl: string;
 }
 
@@ -61,7 +63,6 @@ interface OverpassEl {
   tags?: Record<string, string>;
 }
 
-/** Interroge Overpass pour les POI touristiques notables autour d'un point. */
 async function overpassPOIs(lat: number, lon: number): Promise<OverpassEl[]> {
   const q =
     `[out:json][timeout:25];(` +
@@ -76,41 +77,22 @@ async function overpassPOIs(lat: number, lon: number): Promise<OverpassEl[]> {
   return data?.elements ?? [];
 }
 
-/** Catégorise un POI à partir de ses tags OSM (plus fiable que le nom). */
-function classifyTags(tags: Record<string, string>): { category: Cat; duration: string; cost: number } {
-  if (tags.aerialway) return { category: "Nature", duration: "demi-journée", cost: 38 };
-  if (tags.natural) return { category: "Nature", duration: "demi-journée", cost: 0 };
-  if (tags.leisure === "park") return { category: "Nature", duration: "1h30", cost: 0 };
+/** Catégorie + durée indicative à partir des tags OSM. */
+function classifyTags(tags: Record<string, string>): { category: Cat; duration: string } {
+  if (tags.aerialway) return { category: "Nature", duration: "demi-journée" };
+  if (tags.natural) return { category: "Nature", duration: "demi-journée" };
+  if (tags.leisure === "park") return { category: "Nature", duration: "1h30" };
   const tour = tags.tourism;
-  if (tour === "museum" || tour === "gallery") return { category: "Culture", duration: "1h30", cost: 14 };
-  if (tour === "viewpoint") return { category: "Nature", duration: "1h", cost: 0 };
+  if (tour === "museum" || tour === "gallery") return { category: "Culture", duration: "1h30" };
+  if (tour === "viewpoint") return { category: "Nature", duration: "1h" };
   if (tour === "zoo" || tour === "aquarium" || tour === "theme_park")
-    return { category: "Loisir", duration: "demi-journée", cost: 25 };
-  if (tags.historic) return { category: "Culture", duration: "1h", cost: 8 };
-  return { category: "Visite", duration: "1h30", cost: 0 };
+    return { category: "Loisir", duration: "demi-journée" };
+  if (tags.historic) return { category: "Culture", duration: "1h" };
+  return { category: "Visite", duration: "1h30" };
 }
 
-function sourceFor(cat: Cat): Src {
-  if (cat === "Nature" || cat === "Loisir") return "GetYourGuide";
-  if (cat === "Gastronomie") return "Airbnb Expériences";
-  return "Google Activités";
-}
-
-function bookingUrl(src: Src, name: string, dest: string): string {
-  const q = encodeURIComponent(`${name} ${dest}`);
-  if (src === "GetYourGuide") return `https://www.getyourguide.fr/s/?q=${q}`;
-  if (src === "Airbnb Expériences")
-    return `https://www.airbnb.fr/s/${encodeURIComponent(dest)}/experiences?query=${encodeURIComponent(name)}`;
-  return `https://www.google.com/search?q=${q}`;
-}
-
-/**
- * Lien le plus pertinent et RÉEL pour un POI :
- *  1. son site officiel (balise OSM `website`) ;
- *  2. sinon son article Wikipédia exact ;
- *  3. sinon une recherche (GetYourGuide / Google) sur son nom.
- */
-function bestLink(tags: Record<string, string>, src: Src, name: string, dest: string): string {
+/** Lien RÉEL : site officiel (OSM `website`) → article Wikipédia → recherche. */
+function bestLink(tags: Record<string, string>, name: string, dest: string): string {
   const site = tags.website || tags["contact:website"] || tags.url;
   if (site && /^https?:\/\//i.test(site)) return site.split(";")[0].trim();
   const wp = tags.wikipedia; // "fr:Colisée"
@@ -122,113 +104,91 @@ function bestLink(tags: Record<string, string>, src: Src, name: string, dest: st
       return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
     }
   }
-  return bookingUrl(src, name, dest);
+  return `https://www.google.com/search?q=${encodeURIComponent(`${name} ${dest}`)}`;
 }
 
-type RawPlace = Omit<PlaceActivity, "cost"> & { baseCost: number };
-const cache = new Map<string, { at: number; places: RawPlace[] }>();
+const cache = new Map<string, { at: number; places: PlaceActivity[] }>();
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
 
-async function discoverRaw(destination: string): Promise<RawPlace[]> {
-  const key = destination.trim().toLowerCase();
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL) return hit.places;
-
-  const geo = await geocode(destination);
-  if (!geo) return [];
-
-  const els = await overpassPOIs(geo.lat, geo.lon);
-  if (els.length === 0) return [];
-
-  // Dédoublonne par nom (FR de préférence) + repère article Wikipédia & Wikidata.
-  interface Entry {
-    name: string;
-    tags: Record<string, string>;
-    wiki?: string;
-    qid?: string;
-    category: Cat;
-  }
-  const byName = new Map<string, Entry>();
-  for (const el of els) {
-    const tags = el.tags ?? {};
-    const name = tags["name:fr"] || tags.name;
-    if (!name || byName.has(name)) continue;
-    const wp = tags.wikipedia; // ex. "fr:Colisée"
-    const wiki = wp && wp.startsWith("fr:") ? wp.slice(3) : undefined;
-    byName.set(name, { name, tags, wiki, qid: tags.wikidata, category: classifyTags(tags).category });
-  }
-  if (byName.size === 0) return [];
-
-  // Notoriété : nombre de versions linguistiques de la fiche Wikidata (un Colisée
-  // a ~150 langues, un lieu mineur 1-2). Un seul appel groupé (jusqu'à 50 ids).
-  const entries = [...byName.values()];
-  const qids = entries.map((e) => e.qid).filter((q): q is string => !!q).slice(0, 50);
-  const fame: Record<string, number> = {};
-  if (qids.length > 0) {
-    const wdUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qids.join(
-      "|",
-    )}&props=sitelinks&format=json`;
-    const wd = (await fetchJson(wdUrl, 10000)) as {
-      entities?: Record<string, { sitelinks?: Record<string, unknown> }>;
-    } | null;
-    for (const [qid, ent] of Object.entries(wd?.entities ?? {})) {
-      fame[qid] = Object.keys(ent.sitelinks ?? {}).length;
-    }
-  }
-  // Tri par notoriété décroissante (les plus connus en premier).
-  entries.sort((a, b) => (fame[b.qid ?? ""] ?? 0) - (fame[a.qid ?? ""] ?? 0));
-  const ordered = entries.slice(0, 16);
-
-  // Descriptions réelles via Wikipédia (un seul appel groupé) pour la sélection.
-  const titles = ordered.map((e) => e.wiki).filter((t): t is string => !!t);
-  const extracts: Record<string, string> = {};
-  if (titles.length > 0) {
-    const exUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&exsentences=2&redirects=1&titles=${encodeURIComponent(
-      titles.join("|"),
-    )}&format=json`;
-    const exData = (await fetchJson(exUrl)) as {
-      query?: { pages?: Record<string, { title?: string; extract?: string }> };
-    } | null;
-    for (const p of Object.values(exData?.query?.pages ?? {})) {
-      if (p.title && p.extract) extracts[p.title] = p.extract;
-    }
-  }
-
-  const places: RawPlace[] = ordered.map((e) => {
-    const { category, duration, cost } = classifyTags(e.tags);
-    const src = sourceFor(category);
-    const extract = (e.wiki && extracts[e.wiki]) || "";
-    return {
-      name: e.name,
-      description: (extract || `Un incontournable à découvrir à ${destination}.`).slice(0, 240),
-      baseCost: cost,
-      category,
-      source: src,
-      rating: 4.6,
-      reviewsCount: 150 + ((e.name.length * 53) % 3500),
-      duration,
-      bookingUrl: bestLink(e.tags, src, e.name, destination),
-    };
-  });
-
-  cache.set(key, { at: Date.now(), places });
-  return places;
+interface Entry {
+  name: string;
+  tags: Record<string, string>;
+  wiki?: string;
+  qid?: string;
 }
 
-/**
- * Renvoie de vraies activités géolocalisées pour la destination, coût ajusté au
- * multiplicateur de budget. Liste vide si les API sont injoignables.
- */
-export async function fetchPlaceActivities(
-  destination: string,
-  costMultiplier: number,
-): Promise<PlaceActivity[]> {
+/** Renvoie de vraies activités géolocalisées et notables pour la destination. */
+export async function fetchPlaceActivities(destination: string): Promise<PlaceActivity[]> {
   try {
-    const raw = await discoverRaw(destination);
-    return raw.map(({ baseCost, ...rest }) => ({
-      ...rest,
-      cost: Math.round(baseCost * costMultiplier),
-    }));
+    const key = destination.trim().toLowerCase();
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_TTL) return hit.places;
+
+    const geo = await geocode(destination);
+    if (!geo) return [];
+
+    const els = await overpassPOIs(geo.lat, geo.lon);
+    if (els.length === 0) return [];
+
+    // Dédoublonne par nom + repère article Wikipédia & fiche Wikidata.
+    const byName = new Map<string, Entry>();
+    for (const el of els) {
+      const tags = el.tags ?? {};
+      const name = tags["name:fr"] || tags.name;
+      if (!name || byName.has(name)) continue;
+      const wp = tags.wikipedia;
+      const wiki = wp && wp.startsWith("fr:") ? wp.slice(3) : undefined;
+      byName.set(name, { name, tags, wiki, qid: tags.wikidata });
+    }
+    if (byName.size === 0) return [];
+
+    // Notoriété : nombre de versions linguistiques de la fiche Wikidata.
+    const entries = [...byName.values()];
+    const qids = entries.map((e) => e.qid).filter((q): q is string => !!q).slice(0, 50);
+    const fame: Record<string, number> = {};
+    if (qids.length > 0) {
+      const wdUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qids.join(
+        "|",
+      )}&props=sitelinks&format=json`;
+      const wd = (await fetchJson(wdUrl, 10000)) as {
+        entities?: Record<string, { sitelinks?: Record<string, unknown> }>;
+      } | null;
+      for (const [qid, ent] of Object.entries(wd?.entities ?? {})) {
+        fame[qid] = Object.keys(ent.sitelinks ?? {}).length;
+      }
+    }
+    entries.sort((a, b) => (fame[b.qid ?? ""] ?? 0) - (fame[a.qid ?? ""] ?? 0));
+    const ordered = entries.slice(0, 16);
+
+    // Descriptions réelles via Wikipédia (un seul appel groupé).
+    const titles = ordered.map((e) => e.wiki).filter((t): t is string => !!t);
+    const extracts: Record<string, string> = {};
+    if (titles.length > 0) {
+      const exUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&exsentences=2&redirects=1&titles=${encodeURIComponent(
+        titles.join("|"),
+      )}&format=json`;
+      const exData = (await fetchJson(exUrl)) as {
+        query?: { pages?: Record<string, { title?: string; extract?: string }> };
+      } | null;
+      for (const p of Object.values(exData?.query?.pages ?? {})) {
+        if (p.title && p.extract) extracts[p.title] = p.extract;
+      }
+    }
+
+    const places: PlaceActivity[] = ordered.map((e) => {
+      const { category, duration } = classifyTags(e.tags);
+      const extract = (e.wiki && extracts[e.wiki]) || "";
+      return {
+        name: e.name,
+        description: (extract || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
+        category,
+        duration,
+        bookingUrl: bestLink(e.tags, e.name, destination),
+      };
+    });
+
+    cache.set(key, { at: Date.now(), places });
+    return places;
   } catch {
     return [];
   }

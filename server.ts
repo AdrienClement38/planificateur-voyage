@@ -431,39 +431,51 @@ async function buildOfflineItinerary(
   const lodgingCost = budgetType === "Économique" ? 35 : budgetType === "Luxe" ? 175 : 75;
   const transportCost = budgetType === "Économique" ? 7 : budgetType === "Luxe" ? 32 : 14;
 
-  // 1) Vraies attractions géolocalisées (Wikipédia + OpenStreetMap).
-  let baseActivities: Activity[] = [];
-  try {
-    const real = await fetchPlaceActivities(destination, costMultiplier);
-    if (real.length >= 6) baseActivities = real;
-  } catch {
-    /* réseau indisponible : on bascule sur le catalogue hors-ligne ci-dessous */
-  }
+  // 1) Vraies activités géolocalisées (OSM + Wikipédia + Wikidata). On ne renvoie
+  //    QUE des données factuelles : nom réel, vraie description, catégorie réelle,
+  //    lien réel. Aucun prix/note/avis « estimé », aucun faux vote.
+  const real = await fetchPlaceActivities(destination);
 
-  // 2) Repli hors-ligne : catalogue curé / templates des 3 plateformes.
-  if (baseActivities.length < 6) {
-    baseActivities = [
-      ...generateGetYourGuideActivities(destination, costMultiplier),
-      ...generateAirbnbExperiences(destination, costMultiplier, adults, checkin, checkout),
-      ...generateGoogleActivities(destination, costMultiplier),
-    ];
-  }
-
-  // Map all activities with proper indices, emulating user/prompter source
-  const activities = baseActivities.map((act, index) => ({
-    id: `act-comb-${cleanKey}-${act.source?.toLowerCase().replace(/[^a-z]/g, "")}-${index}-${Math.floor(Math.random() * 100000)}`,
-    name: act.name,
-    description: act.description,
-    cost: act.cost,
-    category: act.category,
-    proposedBy: act.source === "GetYourGuide" ? "GetYourGuide 🎫" : act.source === "Airbnb Expériences" ? "Airbnb Expériences 🏠" : "Google Activités ✈️",
-    source: act.source,
-    rating: act.rating,
-    reviewsCount: act.reviewsCount,
-    duration: act.duration,
-    bookingUrl: act.bookingUrl,
-    votes: act.source === "GetYourGuide" ? [1, 2] : act.source === "Airbnb Expériences" ? [3] : [2] // Simulated initial votes
-  }));
+  const activities =
+    real.length >= 6
+      ? real.map((act, index) => ({
+          id: `act-real-${cleanKey}-${index}`,
+          name: act.name,
+          description: act.description,
+          cost: 0, // pas de prix inventé (à renseigner par l'utilisateur si besoin)
+          category: act.category,
+          proposedBy: "OpenStreetMap · Wikipédia",
+          source: undefined as string | undefined,
+          rating: undefined as number | undefined,
+          reviewsCount: undefined as number | undefined,
+          duration: act.duration,
+          bookingUrl: act.bookingUrl,
+          votes: [] as number[],
+        }))
+      : // 2) Repli (rare) : catalogue hors-ligne, quand les API sont injoignables.
+        [
+          ...generateGetYourGuideActivities(destination, costMultiplier),
+          ...generateAirbnbExperiences(destination, costMultiplier, adults, checkin, checkout),
+          ...generateGoogleActivities(destination, costMultiplier),
+        ].map((act, index) => ({
+          id: `act-comb-${cleanKey}-${index}-${Math.floor(Math.random() * 100000)}`,
+          name: act.name,
+          description: act.description,
+          cost: act.cost,
+          category: act.category,
+          proposedBy:
+            act.source === "GetYourGuide"
+              ? "GetYourGuide 🎫"
+              : act.source === "Airbnb Expériences"
+                ? "Airbnb Expériences 🏠"
+                : "Google Activités ✈️",
+          source: act.source as string | undefined,
+          rating: act.rating as number | undefined,
+          reviewsCount: act.reviewsCount as number | undefined,
+          duration: act.duration,
+          bookingUrl: act.bookingUrl,
+          votes: [] as number[],
+        }));
 
   // PROGRAM EMPTY BY DEFAULT: As requested, the program should start with empty events so that passengers can plan!
   const itinerary = [];
