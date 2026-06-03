@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { Calendar, Plus, Trash2, AlertTriangle } from "lucide-react";
-import type { Member } from "../types";
+import { Calendar, Plus, Trash2, AlertTriangle, Users } from "lucide-react";
 import { avatarUrl } from "../lib/avatar";
 import { useTripStore } from "../store/TripContext";
+import { countMembersWithAvailability, computeTopPeriods } from "../domain/availability";
 
 export default function AvailabilityCalendar() {
   const {
@@ -41,129 +41,17 @@ export default function AvailabilityCalendar() {
     removeAvailability(id);
   };
 
-  // Ideal Overlap Date Finder Algorithm
-  // Find top 3 periods with most participants
-  const computeTop3Periods = () => {
-    if (trip.availabilities.length === 0) return [];
+  // Nombre de personnes ayant saisi des dates : le croisement n'a de sens qu'à
+  // partir de 2. En dessous, on n'affiche pas de « meilleures périodes ».
+  const distinctMembers = countMembersWithAvailability(trip.availabilities);
 
-    const dayCounts: { [dateStr: string]: string[] } = {};
-
-    trip.availabilities.forEach((avail) => {
-      const start = new Date(avail.start);
-      const end = new Date(avail.end);
-      const current = new Date(start);
-
-      let count = 0;
-      while (current <= end && count < 65) {
-        const dateStr = current.toISOString().split("T")[0];
-        if (!dayCounts[dateStr]) {
-          dayCounts[dateStr] = [];
-        }
-        if (!dayCounts[dateStr].includes(avail.memberId)) {
-          dayCounts[dateStr].push(avail.memberId);
-        }
-        current.setDate(current.getDate() + 1);
-        count++;
-      }
-    });
-
-    const activeDates = Object.keys(dayCounts).sort();
-    if (activeDates.length === 0) return [];
-
-    const neededDays = trip.targetDays;
-    const candidates: Array<{
-      startDate: string;
-      endDate: string;
-      daysCount: number;
-      membersCount: number;
-      members: Member[];
-      missingMembers: Member[];
-      score: number;
-    }> = [];
-
-    // Evaluate sliding window of 'neededDays' size starting on any day
-    for (let i = 0; i <= activeDates.length - neededDays; i++) {
-      const candidateStartStr = activeDates[i];
-      const candidateStartDate = new Date(candidateStartStr);
-
-      const candidateRange: string[] = [];
-      let currentMembersIntersection: string[] | null = null;
-      const membersUnion = new Set<string>();
-
-      for (let offset = 0; offset < neededDays; offset++) {
-        const d = new Date(candidateStartDate);
-        d.setDate(d.getDate() + offset);
-        const dStr = d.toISOString().split("T")[0];
-        candidateRange.push(dStr);
-
-        const dayMembers = dayCounts[dStr] || [];
-        dayMembers.forEach(m => membersUnion.add(m));
-
-        if (currentMembersIntersection === null) {
-          currentMembersIntersection = [...dayMembers];
-        } else {
-          currentMembersIntersection = currentMembersIntersection.filter(m => dayMembers.includes(m));
-        }
-      }
-
-      const countIntersect = currentMembersIntersection ? currentMembersIntersection.length : 0;
-      const score = countIntersect * 1000 + membersUnion.size;
-
-      if (countIntersect > 0) {
-        candidates.push({
-          startDate: candidateRange[0],
-          endDate: candidateRange[candidateRange.length - 1],
-          daysCount: neededDays,
-          membersCount: countIntersect,
-          members: trip.members.filter((m) => currentMembersIntersection!.includes(m.id)),
-          missingMembers: trip.members.filter((m) => !currentMembersIntersection!.includes(m.id)),
-          score,
-        });
-      }
-    }
-
-    // Sort by score descending
-    candidates.sort((a, b) => b.score - a.score);
-
-    // Keep top 3 with distinct start dates
-    const distinctPeriods: typeof candidates = [];
-    const usedStartDates = new Set<string>();
-    for (const cand of candidates) {
-      if (!usedStartDates.has(cand.startDate)) {
-        distinctPeriods.push(cand);
-        usedStartDates.add(cand.startDate);
-        if (distinctPeriods.length >= 3) break;
-      }
-    }
-
-    // Fallback: If no sliding candidates, use individual days with highest participant count
-    if (distinctPeriods.length === 0) {
-      const daysList = Object.entries(dayCounts)
-        .map(([day, mIds]) => ({
-          day,
-          mIds,
-          score: mIds.length
-        }))
-        .sort((a, b) => b.score - a.score);
-
-      const topDays = daysList.slice(0, 3);
-      topDays.forEach(({ day, mIds }) => {
-        distinctPeriods.push({
-          startDate: day,
-          endDate: day,
-          daysCount: 1,
-          membersCount: mIds.length,
-          members: trip.members.filter((m) => mIds.includes(m.id)),
-          missingMembers: trip.members.filter((m) => !mIds.includes(m.id)),
-          score: mIds.length * 1000,
-        });
-      });
-    }
-
-    return distinctPeriods.slice(0, 3);
-  };
-
-  const topPeriods = computeTop3Periods();
+  // Top 3 fenêtres communes (vide tant que < 2 personnes). On enrichit chaque
+  // période avec les objets Member (présents / absents) pour l'affichage.
+  const topPeriods = computeTopPeriods(trip.availabilities, trip.targetDays).map((p) => ({
+    ...p,
+    members: trip.members.filter((m) => p.memberIds.includes(m.id)),
+    missingMembers: trip.members.filter((m) => !p.memberIds.includes(m.id)),
+  }));
 
   // Helper date formatter: French Locale
   const formatFrenchDate = (dateStr: string) => {
@@ -184,8 +72,11 @@ export default function AvailabilityCalendar() {
             Calendrier Commun & Disponibilités
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Chacun ajoute ses périodes de liberté. L'algorithme calcule automatiquement les meilleures dates pour un séjour de{" "}
-            <span className="font-semibold text-slate-700">{trip.targetDays} jours</span> : il vous propose les <strong>3 meilleures options</strong> !
+            Chacun ajoute ses périodes de liberté. Dès que{" "}
+            <span className="font-semibold text-slate-700">plusieurs voyageurs</span> ont saisi leurs
+            dates, l'algorithme croise les agendas et propose les{" "}
+            <strong>3 meilleures périodes communes</strong> pour un séjour de{" "}
+            <span className="font-semibold text-slate-700">{trip.targetDays} jours</span>.
           </p>
         </div>
       </div>
@@ -375,14 +266,37 @@ export default function AvailabilityCalendar() {
                     💡 <em>Cliquez sur une option de dates pour la configurer comme période active du séjour !</em>
                   </div>
                 </div>
-              ) : (
+              ) : trip.availabilities.length === 0 ? (
                 <div className="py-8 text-center space-y-3">
                   <AlertTriangle className="w-8 h-8 text-indigo-400 mx-auto" />
                   <p className="text-xs font-semibold">
-                    En attente de disponibilités pour calculer les 3 périodes optimales.
+                    En attente de disponibilités pour calculer les meilleures périodes.
                   </p>
                   <p className="text-[11px] text-slate-400">
-                    Saisissez vos dates dans le formulaire à gauche pour lancer la détection automatique.
+                    Saisissez vos dates dans le formulaire à gauche pour lancer la détection.
+                  </p>
+                </div>
+              ) : distinctMembers < 2 ? (
+                <div className="py-8 text-center space-y-3">
+                  <Users className="w-8 h-8 text-indigo-400 mx-auto" />
+                  <p className="text-xs font-semibold">
+                    Il faut au moins 2 voyageurs pour croiser les agendas.
+                  </p>
+                  <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                    Pour l'instant, une seule personne a saisi ses disponibilités. Le calcul des
+                    meilleures périodes communes démarrera dès qu'un autre membre aura renseigné ses
+                    dates. Partagez le code du voyage pour inviter vos co-trippeurs !
+                  </p>
+                </div>
+              ) : (
+                <div className="py-8 text-center space-y-3">
+                  <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+                  <p className="text-xs font-semibold">
+                    Aucune période commune de {trip.targetDays} jours pour l'instant.
+                  </p>
+                  <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                    Vos disponibilités ne se recoupent pas encore sur {trip.targetDays} jours
+                    consécutifs. Élargissez vos dates ou ajustez la durée du séjour.
                   </p>
                 </div>
               )}

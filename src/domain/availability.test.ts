@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { findBestTravelWindow, buildDailyAvailabilityMap } from "./availability";
+import {
+  findBestTravelWindow,
+  buildDailyAvailabilityMap,
+  countMembersWithAvailability,
+  computeTopPeriods,
+} from "./availability";
 import type { Availability } from "../types";
 
 describe("buildDailyAvailabilityMap", () => {
@@ -39,5 +44,59 @@ describe("findBestTravelWindow", () => {
       checkin: "2026-07-12",
       checkout: "2026-07-14",
     });
+  });
+});
+
+describe("countMembersWithAvailability", () => {
+  it("compte les membres distincts", () => {
+    expect(
+      countMembersWithAvailability([
+        { id: "a1", memberId: "m1", start: "2026-07-10", end: "2026-07-12" },
+        { id: "a2", memberId: "m1", start: "2026-07-20", end: "2026-07-22" },
+        { id: "a3", memberId: "m2", start: "2026-07-11", end: "2026-07-13" },
+      ]),
+    ).toBe(2);
+  });
+});
+
+describe("computeTopPeriods", () => {
+  it("ne calcule rien avec une seule personne (croiser un seul agenda n'a pas de sens)", () => {
+    const av: Availability[] = [
+      { id: "a1", memberId: "m1", start: "2026-07-13", end: "2026-07-19" },
+    ];
+    expect(computeTopPeriods(av, 3)).toEqual([]);
+  });
+
+  it("calcule les meilleures périodes dès 2 personnes, intersection en tête", () => {
+    const av: Availability[] = [
+      { id: "a1", memberId: "m1", start: "2026-07-10", end: "2026-07-14" },
+      { id: "a2", memberId: "m2", start: "2026-07-12", end: "2026-07-16" },
+    ];
+    const periods = computeTopPeriods(av, 3);
+    expect(periods.length).toBeGreaterThan(0);
+    // La meilleure fenêtre couvre l'intersection des 2 membres.
+    expect(periods[0]).toMatchObject({
+      startDate: "2026-07-12",
+      endDate: "2026-07-14",
+      membersCount: 2,
+    });
+    expect([...periods[0].memberIds].sort()).toEqual(["m1", "m2"]);
+  });
+
+  it("respecte un seuil minMembers personnalisable", () => {
+    const av: Availability[] = [
+      { id: "a1", memberId: "m1", start: "2026-07-10", end: "2026-07-16" },
+      { id: "a2", memberId: "m2", start: "2026-07-10", end: "2026-07-16" },
+    ];
+    expect(computeTopPeriods(av, 3, 3)).toEqual([]); // exige 3 personnes
+    expect(computeTopPeriods(av, 3, 2).length).toBeGreaterThan(0);
+  });
+
+  it("renvoie vide si la couverture est plus courte que la durée demandée", () => {
+    const av: Availability[] = [
+      { id: "a1", memberId: "m1", start: "2026-07-10", end: "2026-07-11" },
+      { id: "a2", memberId: "m2", start: "2026-07-10", end: "2026-07-11" },
+    ];
+    expect(computeTopPeriods(av, 5)).toEqual([]);
   });
 });

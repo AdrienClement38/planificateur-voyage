@@ -102,3 +102,81 @@ export function findBestTravelWindow(
     checkout: availabilities[0].end,
   };
 }
+
+/** Nombre de membres DISTINCTS ayant saisi au moins une disponibilité. */
+export function countMembersWithAvailability(availabilities: Availability[]): number {
+  return new Set(availabilities.map((a) => a.memberId)).size;
+}
+
+export interface AvailabilityPeriod {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  /** Membres présents TOUS les jours de la fenêtre (intersection). */
+  membersCount: number;
+  memberIds: string[];
+  score: number;
+}
+
+/**
+ * Calcule les `top` meilleures fenêtres de `targetDays` jours consécutifs,
+ * classées par nombre de membres présents toute la fenêtre (intersection) puis
+ * par couverture totale (union).
+ *
+ * Ne renvoie RIEN tant que moins de `minMembers` personnes (2 par défaut) ont
+ * saisi leurs disponibilités : croiser un seul agenda n'a pas de sens.
+ */
+export function computeTopPeriods(
+  availabilities: Availability[],
+  targetDays: number,
+  minMembers = 2,
+  top = 3,
+): AvailabilityPeriod[] {
+  if (countMembersWithAvailability(availabilities) < minMembers) return [];
+
+  const dayMembers = buildDailyAvailabilityMap(availabilities);
+  const activeDates = Object.keys(dayMembers).sort();
+  const neededDays = targetDays || 4;
+  if (activeDates.length < neededDays) return [];
+
+  const candidates: AvailabilityPeriod[] = [];
+  for (let i = 0; i <= activeDates.length - neededDays; i++) {
+    const start = new Date(activeDates[i]);
+    const range: string[] = [];
+    let intersection: string[] | null = null;
+    const union = new Set<string>();
+
+    for (let offset = 0; offset < neededDays; offset++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + offset);
+      const dStr = toISODate(d);
+      range.push(dStr);
+      const members = dayMembers[dStr] || [];
+      members.forEach((m) => union.add(m));
+      intersection =
+        intersection === null ? [...members] : intersection.filter((m) => members.includes(m));
+    }
+
+    const inter = intersection ?? [];
+    if (inter.length > 0) {
+      candidates.push({
+        startDate: range[0],
+        endDate: range[range.length - 1],
+        membersCount: inter.length,
+        memberIds: inter,
+        score: inter.length * 1000 + union.size,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  const distinct: AvailabilityPeriod[] = [];
+  const usedStarts = new Set<string>();
+  for (const c of candidates) {
+    if (usedStarts.has(c.startDate)) continue;
+    distinct.push(c);
+    usedStarts.add(c.startDate);
+    if (distinct.length >= top) break;
+  }
+  return distinct;
+}
