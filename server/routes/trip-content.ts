@@ -183,6 +183,12 @@ router.post("/:id/activities/bulk", requireMembership, async (req, res) => {
   await respondTrip(res, req.params.id);
 });
 
+// Vide TOUTES les suggestions d'activités du voyage (nettoyage).
+router.delete("/:id/activities", requireMembership, async (req, res) => {
+  await db.delete(activities).where(eq(activities.tripId, req.params.id));
+  await respondTrip(res, req.params.id);
+});
+
 router.delete("/:id/activities/:actId", requireMembership, async (req, res) => {
   await db
     .delete(activities)

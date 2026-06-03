@@ -150,6 +150,8 @@ export const tripsApi = {
     request<TripResp>(`/api/trips/${id}/activities/bulk`, { method: "POST", ...body({ activities }) }),
   deleteActivity: (id: string, actId: string) =>
     request<TripResp>(`/api/trips/${id}/activities/${actId}`, { method: "DELETE" }),
+  clearActivities: (id: string) =>
+    request<TripResp>(`/api/trips/${id}/activities`, { method: "DELETE" }),
   voteActivity: (id: string, actId: string) =>
     request<TripResp>(`/api/trips/${id}/activities/${actId}/vote`, { method: "POST" }),
 

@@ -30,6 +30,8 @@ export default function ItineraryTab() {
     handleGenerateItinerary,
     currentMember,
     handleToggleActivityVote,
+    handleDeleteActivity,
+    handleClearActivities,
     handleScheduleActivity,
     handleAutoPlanFromVotes,
     handleDeleteEvent,
@@ -402,6 +404,13 @@ export default function ItineraryTab() {
                               <CalendarPlus className="w-3 h-3" /> Planifier
                             </button>
                           )}
+                          <button
+                            onClick={() => handleDeleteActivity(act.id)}
+                            className="text-slate-500 hover:text-rose-400 p-1 rounded transition cursor-pointer"
+                            title="Retirer cette suggestion"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       </div>
 
@@ -521,6 +530,19 @@ export default function ItineraryTab() {
                       <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres idées
                     </>
                   )}
+                </button>
+              )}
+
+              {!showFavorites && suggestionPool.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirm("Vider toutes les suggestions de ce voyage ? (le programme déjà planifié n'est pas touché)"))
+                      handleClearActivities();
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white/5 hover:bg-rose-500/15 text-slate-400 hover:text-rose-300 text-[10.5px] font-semibold py-2 rounded-xl border border-white/10 transition cursor-pointer"
+                  title="Supprimer toutes les suggestions (utile pour repartir sur du réel)"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Nettoyer les suggestions
                 </button>
               )}
             </div>

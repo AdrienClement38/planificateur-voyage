@@ -91,8 +91,12 @@ function classifyTags(tags: Record<string, string>): { category: Cat; duration: 
   return { category: "Visite", duration: "1h30" };
 }
 
-/** Lien RÉEL : site officiel (OSM `website`) → article Wikipédia → recherche. */
-function bestLink(tags: Record<string, string>, name: string, dest: string): string {
+/**
+ * Lien RÉEL et DIRECT : site officiel (OSM `website`), sinon l'article Wikipédia.
+ * Si ni l'un ni l'autre n'existe, on renvoie "" (pas de redirection « recherche »)
+ * et la carte n'affiche alors aucun lien.
+ */
+function bestLink(tags: Record<string, string>): string {
   const site = tags.website || tags["contact:website"] || tags.url;
   if (site && /^https?:\/\//i.test(site)) return site.split(";")[0].trim();
   const wp = tags.wikipedia; // "fr:Colisée"
@@ -104,7 +108,7 @@ function bestLink(tags: Record<string, string>, name: string, dest: string): str
       return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
     }
   }
-  return `https://www.google.com/search?q=${encodeURIComponent(`${name} ${dest}`)}`;
+  return "";
 }
 
 const cache = new Map<string, { at: number; places: PlaceActivity[] }>();
@@ -183,7 +187,7 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
         description: (extract || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
         category,
         duration,
-        bookingUrl: bestLink(e.tags, e.name, destination),
+        bookingUrl: bestLink(e.tags),
       };
     });
 

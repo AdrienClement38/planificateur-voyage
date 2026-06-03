@@ -438,6 +438,19 @@ export function useTripController() {
     [activeTrip, applyMutation],
   );
 
+  const handleDeleteActivity = useCallback(
+    (activityId: string) => {
+      if (!activeTrip) return;
+      void applyMutation(() => tripsApi.deleteActivity(activeTrip.id, activityId));
+    },
+    [activeTrip, applyMutation],
+  );
+
+  const handleClearActivities = useCallback(() => {
+    if (!activeTrip) return;
+    void applyMutation(() => tripsApi.clearActivities(activeTrip.id));
+  }, [activeTrip, applyMutation]);
+
   const handleScheduleActivity = useCallback(
     (act: ActivityProposal, dayNum: number, timeStr = "10:00", endTime?: string) => {
       if (!activeTrip) return;
@@ -852,6 +865,8 @@ export function useTripController() {
     handleChooseDestination,
     handleDeleteDestinationProposal,
     handleToggleActivityVote,
+    handleDeleteActivity,
+    handleClearActivities,
     handleScheduleActivity,
     handleAutoPlanFromVotes,
     handleGenerateItinerary,
