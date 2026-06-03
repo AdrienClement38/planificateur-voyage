@@ -6,6 +6,7 @@ import {
   isValidTime,
   slotsOverlap,
   findConflictingEvent,
+  findNextFreeSlot,
 } from "./schedule";
 
 describe("parseDurationToMinutes", () => {
@@ -128,5 +129,31 @@ describe("findConflictingEvent", () => {
   });
   it("ignore l'étape en cours d'édition", () => {
     expect(findConflictingEvent(events, "10:00", "18:30", "a")).toBeNull();
+  });
+});
+
+describe("findNextFreeSlot", () => {
+  it("propose le début de journée si rien n'est prévu", () => {
+    expect(findNextFreeSlot([], 120)).toEqual({ start: "09:00", end: "11:00" });
+  });
+  it("saute après une étape qui démarre en début de journée", () => {
+    const events = [{ id: "a", time: "09:00", endTime: "10:00" }];
+    expect(findNextFreeSlot(events, 120)).toEqual({ start: "10:00", end: "12:00" });
+  });
+  it("place avant une étape s'il y a la place", () => {
+    const events = [{ id: "a", time: "14:00", endTime: "16:00" }];
+    expect(findNextFreeSlot(events, 60)).toEqual({ start: "09:00", end: "10:00" });
+  });
+  it("trouve un trou entre deux étapes", () => {
+    const events = [
+      { id: "a", time: "09:00", endTime: "10:00" },
+      { id: "b", time: "12:00", endTime: "14:00" },
+    ];
+    expect(findNextFreeSlot(events, 60)).toEqual({ start: "10:00", end: "11:00" });
+  });
+  it("renvoie null si la journée est pleine pour cette durée", () => {
+    const events = [{ id: "a", time: "10:00", endTime: "18:30" }];
+    // une journée complète (8h) ne tient pas après 18:30 avant 23:59
+    expect(findNextFreeSlot(events, 480)).toBeNull();
   });
 });

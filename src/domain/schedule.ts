@@ -128,3 +128,34 @@ export function findConflictingEvent(
   }
   return null;
 }
+
+/** Convertit des minutes depuis minuit en "HH:MM" (borné à 23:59). */
+function minutesToHM(total: number): string {
+  const t = Math.max(0, Math.min(23 * 60 + 59, total));
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Trouve le premier créneau libre de `durationMinutes` minutes dans une journée,
+ * en partant de `dayStart` et en sautant après chaque étape déjà programmée.
+ * Renvoie null si aucune place ne tient avant `dayEnd`.
+ */
+export function findNextFreeSlot(
+  events: SlotLike[],
+  durationMinutes: number,
+  dayStart = "09:00",
+  dayEnd = "23:59",
+): { start: string; end: string } | null {
+  const endLimit = toMinutes(dayEnd) ?? 23 * 60 + 59;
+  let candidate = toMinutes(dayStart) ?? 9 * 60;
+  for (let i = 0; i < 300; i++) {
+    if (candidate + durationMinutes > endLimit) return null;
+    const start = minutesToHM(candidate);
+    const end = minutesToHM(candidate + durationMinutes);
+    const conflict = findConflictingEvent(events, start, end);
+    if (!conflict) return { start, end };
+    const conflictEnd = toMinutes(conflict.endTime ?? conflict.time) ?? candidate;
+    candidate = Math.max(conflictEnd, candidate + 1);
+  }
+  return null;
+}

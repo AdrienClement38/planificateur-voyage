@@ -11,7 +11,13 @@ import {
   Check,
 } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
-import { computeEndTime, findConflictingEvent } from "../domain/schedule";
+import {
+  computeEndTime,
+  findConflictingEvent,
+  findNextFreeSlot,
+  parseDurationToMinutes,
+  addMinutesToTime,
+} from "../domain/schedule";
 import type { ActivityProposal } from "../types";
 
 /** Onglet des suggestions d'activités et du programme journalier. */
@@ -59,13 +65,38 @@ export default function ItineraryTab() {
   const dayEventsOf = (dayNum: number) =>
     activeTrip.itinerary.find((d) => d.day === dayNum)?.events ?? [];
 
-  // Ouvre le mini-formulaire pour une activité, en pré-calculant l'heure de fin.
+  // Propose d'emblée le 1er créneau libre : on parcourt les jours dans l'ordre
+  // et on s'arrête au premier qui a la place pour la durée de l'activité.
+  const proposeSlot = (act: ActivityProposal) => {
+    const mins = parseDurationToMinutes(act.duration) ?? 60;
+    const estimated = parseDurationToMinutes(act.duration) === null;
+    for (let day = 1; day <= activeTrip.targetDays; day++) {
+      const slot = findNextFreeSlot(dayEventsOf(day), mins);
+      if (slot) return { day, start: slot.start, end: slot.end, estimated };
+    }
+    // Tous les jours sont pleins : repli sur le jour 1 à 10:00 (conflit signalé).
+    return { day: 1, start: "10:00", end: addMinutesToTime("10:00", mins), estimated };
+  };
+
+  // Ouvre le mini-formulaire en pré-remplissant un créneau libre.
   const openPlanner = (act: ActivityProposal) => {
-    const { endTime, estimated } = computeEndTime("10:00", act.duration);
-    setPlanForm({ day: 1, start: "10:00", end: endTime, estimated });
+    setPlanForm(proposeSlot(act));
     setPlanError("");
     setEditEventId(null);
     setPlanActId(act.id);
+  };
+
+  // Changement de jour : propose le 1er créneau libre de CE jour.
+  const onPlanDayChange = (act: ActivityProposal, day: number) => {
+    const mins = parseDurationToMinutes(act.duration) ?? 60;
+    const slot = findNextFreeSlot(dayEventsOf(day), mins);
+    setPlanForm((f) => ({
+      ...f,
+      day,
+      start: slot ? slot.start : f.start,
+      end: slot ? slot.end : f.end,
+    }));
+    setPlanError("");
   };
 
   // Recalcule la fin quand l'heure de début change (selon la durée de l'activité).
@@ -362,7 +393,7 @@ export default function ItineraryTab() {
                               <span className="block text-[8px] uppercase font-bold text-indigo-300 mb-0.5">Jour</span>
                               <select
                                 value={planForm.day}
-                                onChange={(e) => setPlanForm((f) => ({ ...f, day: Number(e.target.value) }))}
+                                onChange={(e) => onPlanDayChange(act, Number(e.target.value))}
                                 className="bg-slate-900 border border-white/10 rounded-lg p-1.5 text-[11px] text-white w-full outline-hidden"
                               >
                                 {Array.from({ length: activeTrip.targetDays }).map((_, idx) => (
