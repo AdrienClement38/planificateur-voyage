@@ -255,7 +255,7 @@ export default function ItineraryTab() {
             Suggestions d'Activités & Programme
           </h3>
           <p className="text-xs text-indigo-300 mt-0.5">
-            Explorez {activeTrip.selectedDestination ? `à ${activeTrip.selectedDestination}` : "votre destination"} de vrais spots via Wikipédia et des bons plans GetYourGuide.
+            Explorez {activeTrip.selectedDestination ? `à ${activeTrip.selectedDestination}` : "votre destination"} de vrais lieux, géolocalisés via OpenStreetMap & Wikipédia.
           </p>
         </div>
 
@@ -285,7 +285,7 @@ export default function ItineraryTab() {
             <h4 className="font-bold text-sm text-slate-100">Aucune activité n'a été suggérée collectivement</h4>
             <p className="text-xs text-slate-400">
               {activeTrip.selectedDestination
-                ? `Consultez les suggestions en temps réel pour ${activeTrip.selectedDestination}. Notre moteur va interroger les attractions de Wikipédia 📚 & le catalogue d'excursions GetYourGuide 🎫 gratuitement.`
+                ? `Découvrez les vrais lieux à ${activeTrip.selectedDestination} : monuments, musées, parcs, points de vue… géolocalisés via OpenStreetMap 🗺️ et décrits par Wikipédia 📚, classés par notoriété.`
                 : "Veuillez désigner et élire une destination gagnante dans l'onglet 'Destinations' afin de lancer la recherche d'activités !"
               }
             </p>
