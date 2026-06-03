@@ -1,5 +1,6 @@
-import type { ItineraryDay, Trip } from "../types";
+import type { ItineraryDay, ItineraryEvent, Trip, ActivityProposal } from "../types";
 import type { ActivitySeed } from "./activities";
+import { addMinutesToTime, parseDurationToMinutes } from "./schedule";
 
 /** Construit un itinéraire vide de `targetDays` jours, prêt à être rempli. */
 export function buildEmptyItinerary(
@@ -118,59 +119,90 @@ export function getMockDynamicItinerary(
  * du voyage, en intercalant les repas selon le type de budget. Pur : ne touche
  * pas à l'état, renvoie simplement le nouvel itinéraire.
  */
+/** Une activité d'au moins 6h occupe la journée entière (pas de 2e activité). */
+const FULL_DAY_MIN = 360;
+
+/** Renvoie la plus tardive de deux heures "HH:MM" (format zéro-paddé). */
+function laterTime(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+/**
+ * Construit un itinéraire automatique COHÉRENT à partir des activités les plus
+ * votées : chaque jour enchaîne petit-déjeuner → activité(s) → repas → dîner en
+ * respectant la **durée** de chaque activité (heures de début ET de fin, aucun
+ * chevauchement). Une activité « journée complète » occupe seule son jour. Les
+ * activités ne sont pas répétées d'un jour à l'autre.
+ */
 export function buildAutoPlanItinerary(trip: Trip): ItineraryDay[] {
-  const sorted = [...trip.activities].sort(
-    (a, b) => b.votes.length - a.votes.length,
-  );
+  const sorted = [...trip.activities].sort((a, b) => b.votes.length - a.votes.length);
+  const dur = (a: ActivityProposal) => parseDurationToMinutes(a.duration) ?? 120;
 
   const mealCostBreakfast = trip.budgetType === "Économique" ? 5 : trip.budgetType === "Luxe" ? 22 : 11;
   const mealCostLunch = trip.budgetType === "Économique" ? 9 : trip.budgetType === "Luxe" ? 40 : 18;
   const mealCostDinner = trip.budgetType === "Économique" ? 14 : trip.budgetType === "Luxe" ? 65 : 28;
 
-  return Array.from({ length: trip.targetDays }, (_, idx) => {
-    const d = idx + 1;
-    const dayEvents = [
-      { id: `ev-auto-${d}-breakfast`, time: "08:30", description: "☕ Petit-déjeuner convivial en groupe près de l'hébergement", cost: mealCostBreakfast },
-    ];
+  const queue = [...sorted];
+  const days: ItineraryDay[] = [];
 
-    if (sorted.length > 0) {
-      const morningAct = sorted[(idx * 2) % sorted.length];
-      dayEvents.push({
-        id: `ev-auto-${d}-morning-${morningAct.id}`,
-        time: "10:00",
-        description: `${morningAct.name} — ${morningAct.description}`,
-        cost: morningAct.cost,
-      });
+  for (let d = 1; d <= trip.targetDays; d++) {
+    // 1 activité par jour, 2 si la 1re est courte et qu'elles tiennent en ~8h.
+    const dayActs: ActivityProposal[] = [];
+    if (queue.length) {
+      const first = queue.shift()!;
+      dayActs.push(first);
+      if (
+        dur(first) < FULL_DAY_MIN &&
+        queue.length &&
+        dur(queue[0]) < FULL_DAY_MIN &&
+        dur(first) + dur(queue[0]) <= 8 * 60
+      ) {
+        dayActs.push(queue.shift()!);
+      }
     }
 
-    dayEvents.push({
-      id: `ev-auto-${d}-lunch`,
-      time: "13:00",
-      description: "🍽️ Pause déjeuner saine - Dégustation locale",
-      cost: mealCostLunch,
-    });
+    const hasFullDay = dayActs.some((a) => dur(a) >= FULL_DAY_MIN);
+    const events: ItineraryEvent[] = [];
+    let n = 0;
+    const push = (time: string, endTime: string, description: string, cost: number) =>
+      events.push({ id: `ev-auto-${d}-${n++}`, time, endTime, description, cost });
 
-    if (sorted.length > 1) {
-      const afternoonAct = sorted[(idx * 2 + 1) % sorted.length];
-      dayEvents.push({
-        id: `ev-auto-${d}-afternoon-${afternoonAct.id}`,
-        time: "15:00",
-        description: `${afternoonAct.name} — ${afternoonAct.description}`,
-        cost: afternoonAct.cost,
-      });
+    // Petit-déjeuner.
+    push("08:30", "09:15", "☕ Petit-déjeuner convivial en groupe près de l'hébergement", mealCostBreakfast);
+
+    let cursor = "10:00"; // les activités démarrent à 10h
+    if (dayActs[0]) {
+      const end = addMinutesToTime(cursor, dur(dayActs[0]));
+      const a = dayActs[0];
+      push(cursor, end, `${a.name}${a.description ? ` — ${a.description}` : ""}`, a.cost);
+      cursor = addMinutesToTime(end, 30); // 30 min de battement
     }
 
-    dayEvents.push({
-      id: `ev-auto-${d}-dinner`,
-      time: "19:30",
-      description: "🍷 Dîner de clôture de l'étape et repos bien mérité",
-      cost: mealCostDinner,
-    });
+    // Déjeuner, sauf si une activité « journée complète » l'englobe.
+    if (!hasFullDay) {
+      const lunch = laterTime(cursor, "12:30");
+      push(lunch, addMinutesToTime(lunch, 60), "🍽️ Pause déjeuner — dégustation locale", mealCostLunch);
+      cursor = addMinutesToTime(lunch, 90); // 60 min repas + 30 min battement
+    }
 
-    return {
+    if (dayActs[1]) {
+      const end = addMinutesToTime(cursor, dur(dayActs[1]));
+      const a = dayActs[1];
+      push(cursor, end, `${a.name}${a.description ? ` — ${a.description}` : ""}`, a.cost);
+      cursor = addMinutesToTime(end, 30);
+    }
+
+    // Dîner : jamais avant 19:30.
+    const dinner = laterTime(cursor, "19:30");
+    push(dinner, addMinutesToTime(dinner, 90), "🍷 Dîner de clôture de l'étape et repos bien mérité", mealCostDinner);
+
+    events.sort((a, b) => a.time.localeCompare(b.time));
+    days.push({
       day: d,
       title: `Jour ${d} : Sélection de l'équipe à ${trip.selectedDestination}`,
-      events: dayEvents.sort((a, b) => a.time.localeCompare(b.time)),
-    };
-  });
+      events,
+    });
+  }
+
+  return days;
 }

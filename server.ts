@@ -262,14 +262,14 @@ function generateGetYourGuideActivities(destination: string, costMultiplier: num
         bookingUrl: `https://www.getyourguide.fr/s/?q=${encodeURIComponent(normDest + " excursion day trip")}`
       },
       {
-        name: `Croisière commentée au coucher du soleil avec apéritif dînatoire ⛵`,
-        description: `Naviguez paisiblement le long des rives de la ville pour observer les façades historiques s'illuminer à la nuit tombée, un verre de bienvenue local à la main.`,
+        name: `Dégustation & apéritif au coucher du soleil avec spécialités locales 🍷`,
+        description: `Savourez les saveurs du coin lors d'un apéritif convivial au meilleur point de vue, pour admirer la ville s'illuminer à la nuit tombée.`,
         cost: Math.round(32 * costMultiplier),
-        category: "Loisir" as const,
+        category: "Gastronomie" as const,
         rating: 4.8,
         reviewsCount: Math.floor(Math.random() * 1400) + 210,
         duration: "1h30",
-        bookingUrl: `https://www.getyourguide.fr/s/?q=${encodeURIComponent(normDest + " croisiere sunset cruise")}`
+        bookingUrl: `https://www.getyourguide.fr/s/?q=${encodeURIComponent(normDest + " apero degustation coucher soleil")}`
       }
     ];
   }
@@ -490,14 +490,14 @@ const GYG_THEMES: ThemeTemplate[] = [
   { label: "Billet coupe-file du musée principal", desc: "Accès prioritaire et audioguide pour explorer les collections phares sans la queue.", cost: 19, category: "Culture", duration: "2h", rating: 4.7 },
   { label: "Visite guidée à vélo électrique", desc: "Parcourez les incontournables sans effort avec un guide local passionné.", cost: 34, category: "Loisir", duration: "3h", rating: 4.8 },
   { label: "Excursion d'une demi-journée aux alentours", desc: "Transport inclus vers les plus beaux sites de la région, en petit groupe.", cost: 45, category: "Nature", duration: "demi-journée", rating: 4.7 },
-  { label: "Croisière panoramique commentée", desc: "Admirez la ville depuis l'eau avec commentaires sur ses monuments.", cost: 24, category: "Loisir", duration: "1h30", rating: 4.6 },
+  { label: "Tour panoramique en bus à arrêts multiples", desc: "Faites le tour des incontournables et descendez où vous voulez.", cost: 24, category: "Loisir", duration: "1h30", rating: 4.6 },
   { label: "Tour gastronomique street-food", desc: "Dégustez 6 spécialités locales chez les meilleurs artisans du centre.", cost: 42, category: "Gastronomie", duration: "3h", rating: 4.9 },
   { label: "Visite nocturne aux flambeaux", desc: "Légendes et anecdotes dans les ruelles illuminées, frissons garantis.", cost: 18, category: "Visite", duration: "2h", rating: 4.6 },
   { label: "City pass transports + attractions 48h", desc: "Entrées et trajets illimités : la formule maline pour tout voir.", cost: 59, category: "Visite", duration: "2 jours", rating: 4.5 },
-  { label: "Atelier dégustation de vins régionaux", desc: "Initiation œnologique guidée autour des cépages du terroir.", cost: 35, category: "Gastronomie", duration: "2h", rating: 4.8 },
+  { label: "Atelier dégustation de produits du terroir", desc: "Initiation guidée aux saveurs et savoir-faire de la région.", cost: 35, category: "Gastronomie", duration: "2h", rating: 4.8 },
   { label: "Excursion en 4x4 dans l'arrière-pays", desc: "Pistes, panoramas et villages perchés avec un chauffeur-guide.", cost: 72, category: "Nature", duration: "1 journée", rating: 4.7 },
   { label: "Spectacle folklorique avec dîner", desc: "Soirée immersive : musique, danses et menu de spécialités.", cost: 49, category: "Culture", duration: "3h", rating: 4.6 },
-  { label: "Balade en bateau au lever du soleil", desc: "Cap sur l'aube dorée, café chaud à bord et calme absolu.", cost: 28, category: "Nature", duration: "2h", rating: 4.8 },
+  { label: "Atelier artisanal avec un maître local", desc: "Mettez la main à la pâte aux côtés d'un savoir-faire traditionnel.", cost: 28, category: "Culture", duration: "2h", rating: 4.8 },
   { label: "Chasse au trésor urbaine en équipe", desc: "Énigmes et défis dans la vieille ville, idéal entre amis.", cost: 16, category: "Loisir", duration: "2h", rating: 4.5 },
 ];
 
@@ -508,7 +508,7 @@ const AIRBNB_THEMES: ThemeTemplate[] = [
   { label: "Tournée des bars cachés", desc: "Speakeasies et cocktails de mixologues, l'âme nocturne de {dest}.", cost: 31, category: "Loisir", duration: "2h30", rating: 4.8 },
   { label: "Randonnée secrète hors des sentiers", desc: "Un local vous emmène sur ses chemins favoris, loin des foules.", cost: 22, category: "Nature", duration: "demi-journée", rating: 4.88 },
   { label: "Dégustation de fromages & charcuterie fermière", desc: "Produits du terroir commentés par un passionné, vin compris.", cost: 29, category: "Gastronomie", duration: "2h", rating: 4.92 },
-  { label: "Initiation paddle / surf avec un moniteur", desc: "Première glisse encadrée dans une ambiance détendue et conviviale.", cost: 38, category: "Loisir", duration: "2h", rating: 4.83 },
+  { label: "Atelier mixologie & cocktails locaux", desc: "Apprenez à réaliser 3 cocktails signature avec un barman passionné.", cost: 38, category: "Loisir", duration: "2h", rating: 4.83 },
   { label: "Cours de danse traditionnelle", desc: "Apprenez les pas locaux en musique, fous rires assurés.", cost: 24, category: "Culture", duration: "1h30", rating: 4.8 },
   { label: "Marché local & brunch fait maison", desc: "Courses avec votre hôte puis brunch préparé ensemble.", cost: 34, category: "Gastronomie", duration: "3h", rating: 4.9 },
   { label: "Yoga au lever du soleil face au paysage", desc: "Séance douce et apaisante pour démarrer la journée en beauté.", cost: 19, category: "Loisir", duration: "1h", rating: 4.87 },
@@ -523,9 +523,9 @@ const GOOGLE_THEMES: ThemeTemplate[] = [
   { label: "Quartier historique piéton", desc: "Ruelles pavées, façades anciennes et terrasses animées.", cost: 0, category: "Visite", duration: "visite libre", rating: 4.6 },
   { label: "Marché couvert traditionnel", desc: "Étals colorés, produits frais et ambiance authentique.", cost: 0, category: "Gastronomie", duration: "1h", rating: 4.5 },
   { label: "Musée d'art moderne", desc: "Collections contemporaines dans un bel écrin architectural.", cost: 12, category: "Culture", duration: "2h", rating: 4.6 },
-  { label: "Plage / bord de lac aménagé", desc: "Baignade, transats et balade les pieds dans l'eau.", cost: 0, category: "Nature", duration: "visite libre", rating: 4.5 },
+  { label: "Sentier de randonnée balisé", desc: "Une boucle nature accessible pour s'aérer et profiter des paysages.", cost: 0, category: "Nature", duration: "demi-journée", rating: 4.6 },
   { label: "Rue commerçante principale", desc: "Boutiques, créateurs et bonnes adresses pour le shopping.", cost: 0, category: "Shopping", duration: "1h", rating: 4.4 },
-  { label: "Pont & promenade fluviale", desc: "Une balade romantique le long de l'eau au coucher du soleil.", cost: 0, category: "Visite", duration: "1h", rating: 4.6 },
+  { label: "Belvédère & table d'orientation", desc: "Le meilleur spot pour une vue dégagée et quelques photos.", cost: 0, category: "Nature", duration: "1h", rating: 4.6 },
   { label: "Place centrale animée", desc: "Le cœur battant de {dest} : cafés, fontaines et vie locale.", cost: 0, category: "Visite", duration: "visite libre", rating: 4.5 },
   { label: "Théâtre / opéra historique", desc: "Architecture remarquable et programmation à découvrir.", cost: 8, category: "Culture", duration: "1h", rating: 4.7 },
   { label: "Téléphérique / funiculaire panoramique", desc: "Montée spectaculaire vers les hauteurs et leur vue imprenable.", cost: 15, category: "Loisir", duration: "1h", rating: 4.6 },

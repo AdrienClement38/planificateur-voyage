@@ -461,7 +461,12 @@ export function useTripController() {
     const days = buildAutoPlanItinerary(activeTrip).map((d) => ({
       day: d.day,
       title: d.title,
-      events: d.events.map((e) => ({ time: e.time, description: e.description, cost: e.cost })),
+      events: d.events.map((e) => ({
+        time: e.time,
+        endTime: e.endTime,
+        description: e.description,
+        cost: e.cost,
+      })),
     }));
     await applyMutation(() => tripsApi.putItinerary(activeTrip.id, days));
     setIsGenerating(false);

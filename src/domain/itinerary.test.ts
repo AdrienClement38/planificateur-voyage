@@ -55,6 +55,15 @@ describe("getMockDynamicItinerary", () => {
 });
 
 describe("buildAutoPlanItinerary", () => {
+  /** Vrai si les créneaux [time,endTime) ne se chevauchent pas (triés par début). */
+  function noOverlap(events: { time: string; endTime?: string }[]): boolean {
+    for (let i = 1; i < events.length; i++) {
+      const prevEnd = events[i - 1].endTime ?? events[i - 1].time;
+      if (events[i].time < prevEnd) return false;
+    }
+    return true;
+  }
+
   it("place l'activité la plus votée le matin et intercale les repas", () => {
     const trip = makeTrip({
       targetDays: 1,
@@ -72,5 +81,28 @@ describe("buildAutoPlanItinerary", () => {
 
     const morning = plan[0].events.find((e) => e.time === "10:00");
     expect(morning?.description).toContain("Très votée");
+    // Chaque étape a une heure de fin et rien ne se chevauche.
+    expect(plan[0].events.every((e) => !!e.endTime)).toBe(true);
+    expect(noOverlap(plan[0].events)).toBe(true);
+  });
+
+  it("respecte la durée : une activité journée complète n'a ni 2e activité ni déjeuner séparé, sans chevauchement", () => {
+    const trip = makeTrip({
+      targetDays: 1,
+      activities: [
+        { id: "a1", name: "Excursion journée", description: "d", cost: 60, category: "Nature", votes: ["m1", "m2"], duration: "1 journée" },
+        { id: "a2", name: "Autre visite", description: "d", cost: 10, category: "Visite", votes: ["m1"], duration: "2h" },
+      ],
+    });
+    const plan = buildAutoPlanItinerary(trip);
+    const day = plan[0];
+    expect(noOverlap(day.events)).toBe(true);
+    // Pas de déjeuner intercalé quand la journée est occupée par une excursion.
+    expect(day.events.some((e) => e.description.includes("Pause déjeuner"))).toBe(false);
+    // La 2e activité n'est pas casée le même jour (journée complète seule).
+    expect(day.events.some((e) => e.description.includes("Autre visite"))).toBe(false);
+    // L'excursion finit bien avant le dîner (≥ 19:30).
+    const dinner = day.events.find((e) => e.description.includes("Dîner"));
+    expect(dinner && dinner.time >= "19:30").toBe(true);
   });
 });
