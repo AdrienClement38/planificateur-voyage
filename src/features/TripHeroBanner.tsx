@@ -49,10 +49,13 @@ export default function TripHeroBanner() {
   const extra = members.length - shown.length;
 
   return (
-    <section className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 sm:p-6 relative overflow-hidden animate-fadeIn">
-      <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-50/50 rounded-full blur-3xl pointer-events-none translate-x-16 -translate-y-16"></div>
+    <section className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 sm:p-6 relative animate-fadeIn">
+      {/* Déco floue clippée dans un calque interne, pour ne PAS rogner les menus déroulants. */}
+      <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-50/50 rounded-full blur-3xl translate-x-16 -translate-y-16"></div>
+      </div>
 
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+      <div className="relative z-20 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
         {/* Identité du voyage + sélecteur de voyage */}
         <div className="min-w-0">
           <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-500">
