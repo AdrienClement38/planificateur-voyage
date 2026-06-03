@@ -137,6 +137,7 @@ export async function loadTripAggregate(tripId: string): Promise<Trip | null> {
         .map((e) => ({
           id: e.id,
           time: e.time,
+          endTime: e.endTime ?? undefined,
           description: e.description,
           cost: e.cost,
         }))

@@ -36,6 +36,8 @@ export interface ActivityProposal {
 export interface ItineraryEvent {
   id: string;
   time: string;
+  /** Heure de fin "HH:MM" (optionnelle). */
+  endTime?: string;
   description: string;
   cost: number;
 }

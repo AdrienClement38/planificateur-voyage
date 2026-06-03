@@ -1,5 +1,8 @@
-import { Sparkles, AlertCircle, ThumbsUp, Trash2, Plus } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, AlertCircle, ThumbsUp, Trash2, Plus, CalendarPlus } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
+import { computeEndTime } from "../domain/schedule";
+import type { ActivityProposal } from "../types";
 
 /** Onglet des suggestions d'activités et du programme journalier. */
 export default function ItineraryTab() {
@@ -20,12 +23,37 @@ export default function ItineraryTab() {
     setManualEventDay,
     manualEventTime,
     setManualEventTime,
+    manualEventEndTime,
+    setManualEventEndTime,
     manualEventDesc,
     setManualEventDesc,
     manualEventCost,
     setManualEventCost,
   } = useTripStore();
+
+  // Mini-formulaire de planification (déplié sous l'activité concernée).
+  const [planActId, setPlanActId] = useState<string | null>(null);
+  const [planForm, setPlanForm] = useState({ day: 1, start: "10:00", end: "11:00", estimated: false });
+
   if (!activeTrip || !currentMember) return null;
+
+  // Ouvre le mini-formulaire pour une activité, en pré-calculant l'heure de fin.
+  const openPlanner = (act: ActivityProposal) => {
+    const { endTime, estimated } = computeEndTime("10:00", act.duration);
+    setPlanForm({ day: 1, start: "10:00", end: endTime, estimated });
+    setPlanActId(act.id);
+  };
+
+  // Recalcule la fin quand l'heure de début change (selon la durée de l'activité).
+  const onStartChange = (act: ActivityProposal, start: string) => {
+    const { endTime, estimated } = computeEndTime(start, act.duration);
+    setPlanForm((f) => ({ ...f, start, end: endTime, estimated }));
+  };
+
+  const confirmPlan = (act: ActivityProposal) => {
+    handleScheduleActivity(act, planForm.day, planForm.start, planForm.end);
+    setPlanActId(null);
+  };
 
   return (
     <div id="bento-card-itinerary" className="bg-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden space-y-6 animate-fadeIn">
@@ -219,25 +247,88 @@ export default function ItineraryTab() {
                             <span>{totalVotes} vote(s)</span>
                           </button>
 
-                          {/* Action scheduling select menu */}
-                          <select
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                handleScheduleActivity(act, Number(e.target.value), "10:00");
-                                e.target.value = ""; // resetting
-                              }
-                            }}
-                            className="bg-indigo-950 text-white border border-indigo-900/30 text-[10px] font-bold px-2 py-1 rounded-lg cursor-pointer outline-hidden"
+                          {/* Bouton qui déplie le mini-planificateur (jour + heures) */}
+                          <button
+                            onClick={() =>
+                              planActId === act.id ? setPlanActId(null) : openPlanner(act)
+                            }
+                            className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition select-none ${
+                              planActId === act.id
+                                ? "bg-indigo-500 text-white"
+                                : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                            }`}
                           >
-                            <option value="">Planifier 📅</option>
-                            {Array.from({ length: activeTrip.targetDays }).map((_, idx) => (
-                              <option key={idx + 1} value={idx + 1}>
-                                Jour {idx + 1}
-                              </option>
-                            ))}
-                          </select>
+                            <CalendarPlus className="w-3 h-3" /> Planifier
+                          </button>
                         </div>
                       </div>
+
+                      {/* Mini-formulaire de planification (jour, heure début, heure fin) */}
+                      {planActId === act.id && (
+                        <div className="bg-indigo-950/40 border border-indigo-500/20 rounded-xl p-3 space-y-2.5 animate-fadeIn">
+                          <div className="grid grid-cols-3 gap-2">
+                            <label className="block">
+                              <span className="block text-[8px] uppercase font-bold text-indigo-300 mb-0.5">Jour</span>
+                              <select
+                                value={planForm.day}
+                                onChange={(e) => setPlanForm((f) => ({ ...f, day: Number(e.target.value) }))}
+                                className="bg-slate-900 border border-white/10 rounded-lg p-1.5 text-[11px] text-white w-full outline-hidden"
+                              >
+                                {Array.from({ length: activeTrip.targetDays }).map((_, idx) => (
+                                  <option key={idx + 1} value={idx + 1}>
+                                    Jour {idx + 1}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="block">
+                              <span className="block text-[8px] uppercase font-bold text-indigo-300 mb-0.5">Début</span>
+                              <input
+                                type="time"
+                                value={planForm.start}
+                                onChange={(e) => onStartChange(act, e.target.value)}
+                                className="bg-slate-900 border border-white/10 rounded-lg p-1.5 text-[11px] text-white w-full outline-hidden"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="block text-[8px] uppercase font-bold text-indigo-300 mb-0.5">Fin</span>
+                              <input
+                                type="time"
+                                value={planForm.end}
+                                onChange={(e) =>
+                                  setPlanForm((f) => ({ ...f, end: e.target.value, estimated: false }))
+                                }
+                                className="bg-slate-900 border border-white/10 rounded-lg p-1.5 text-[11px] text-white w-full outline-hidden"
+                              />
+                            </label>
+                          </div>
+
+                          {planForm.estimated && (
+                            <p className="flex items-start gap-1.5 text-[9.5px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1.5 leading-snug">
+                              <AlertCircle className="w-3 h-3 shrink-0 mt-px" />
+                              <span>
+                                Durée inconnue : fin estimée à <strong>+1h</strong>. Vérifie-la et
+                                ajuste-la pour un programme cohérent.
+                              </span>
+                            </p>
+                          )}
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setPlanActId(null)}
+                              className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] font-bold py-1.5 rounded-lg transition cursor-pointer"
+                            >
+                              Annuler
+                            </button>
+                            <button
+                              onClick={() => confirmPlan(act)}
+                              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold py-1.5 rounded-lg transition cursor-pointer"
+                            >
+                              Ajouter au programme
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -284,8 +375,9 @@ export default function ItineraryTab() {
                       day.events.map((ev) => (
                         <div key={ev.id} className="flex gap-2.5 text-[11px] justify-between group/ev bg-white/[0.02] hover:bg-white/[0.04] p-2 rounded-xl transition border border-transparent hover:border-white/5">
                           <div className="flex gap-2">
-                            <span className="font-mono text-indigo-300 font-semibold shrink-0 bg-white/5 px-1.5 py-0.5 rounded text-[9.5px] self-start">
+                            <span className="font-mono text-indigo-300 font-semibold shrink-0 bg-white/5 px-1.5 py-0.5 rounded text-[9.5px] self-start whitespace-nowrap">
                               {ev.time}
+                              {ev.endTime ? ` → ${ev.endTime}` : ""}
                             </span>
                             <div>
                               <p className="font-bold text-slate-100">{ev.description}</p>
@@ -327,7 +419,7 @@ export default function ItineraryTab() {
             <Plus className="w-3.5 h-3.5" /> Planifier manuellement une autre étape
           </h4>
 
-          <form onSubmit={handleAddManualEvent} className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+          <form onSubmit={handleAddManualEvent} className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <div>
               <span className="block text-[9px] uppercase text-slate-400 mb-0.5">Jour :</span>
               <select
@@ -344,17 +436,37 @@ export default function ItineraryTab() {
             </div>
 
             <div>
-              <span className="block text-[9px] uppercase text-slate-400 mb-0.5">Heure :</span>
+              <span className="block text-[9px] uppercase text-slate-400 mb-0.5">Début :</span>
               <input
-                type="text"
-                placeholder="Ex: 10:00"
+                type="time"
                 value={manualEventTime}
                 onChange={(e) => setManualEventTime(e.target.value)}
                 className="bg-slate-800 border border-white/10 rounded-xl p-2 text-xs text-white w-full outline-hidden"
               />
             </div>
 
-            <div className="sm:col-span-2">
+            <div>
+              <span className="block text-[9px] uppercase text-slate-400 mb-0.5">Fin (option.) :</span>
+              <input
+                type="time"
+                value={manualEventEndTime}
+                onChange={(e) => setManualEventEndTime(e.target.value)}
+                className="bg-slate-800 border border-white/10 rounded-xl p-2 text-xs text-white w-full outline-hidden"
+              />
+            </div>
+
+            <div>
+              <span className="block text-[9px] uppercase text-slate-400 mb-0.5">Tarif (€) :</span>
+              <input
+                type="number"
+                placeholder="Coût / pers."
+                value={manualEventCost || ""}
+                onChange={(e) => setManualEventCost(Number(e.target.value) || 0)}
+                className="bg-slate-800 border border-white/10 rounded-xl p-2 text-xs text-white w-full"
+              />
+            </div>
+
+            <div className="col-span-2 sm:col-span-3">
               <span className="block text-[9px] uppercase text-slate-400 mb-0.5">Activité ou description :</span>
               <input
                 type="text"
@@ -366,23 +478,12 @@ export default function ItineraryTab() {
               />
             </div>
 
-            <div className="sm:col-span-2">
-              <span className="block text-[9px] uppercase text-slate-400 mb-0.5">Tarif estimé (€) :</span>
-              <input
-                type="number"
-                placeholder="Coût individuel"
-                value={manualEventCost || ""}
-                onChange={(e) => setManualEventCost(Number(e.target.value) || 0)}
-                className="bg-slate-800 border border-white/10 rounded-xl p-2 text-xs text-white w-full"
-              />
-            </div>
-
-            <div className="sm:col-span-2 flex items-end">
+            <div className="col-span-2 sm:col-span-1 flex items-end">
               <button
                 type="submit"
                 className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition duration-200 w-full cursor-pointer"
               >
-                Ajouter au programme
+                Ajouter
               </button>
             </div>
           </form>

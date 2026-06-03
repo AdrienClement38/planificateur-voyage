@@ -226,6 +226,7 @@ const itinerarySchema = z.array(
       .array(
         z.object({
           time: z.string(),
+          endTime: z.string().optional(),
           description: z.string(),
           cost: z.number().int().default(0),
         }),
@@ -260,6 +261,7 @@ router.post("/:id/events", requireMembership, async (req, res) => {
     .object({
       day: z.number().int().min(1),
       time: z.string(),
+      endTime: z.string().optional(),
       description: z.string().min(1),
       cost: z.number().int().default(0),
     })
@@ -285,6 +287,7 @@ router.post("/:id/events", requireMembership, async (req, res) => {
   await db.insert(events).values({
     dayId: dayRow.id,
     time: parsed.data.time,
+    endTime: parsed.data.endTime ?? null,
     description: parsed.data.description,
     cost: parsed.data.cost,
   });

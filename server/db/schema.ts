@@ -150,7 +150,8 @@ export const events = pgTable("events", {
   dayId: uuid("day_id")
     .notNull()
     .references(() => itineraryDays.id, { onDelete: "cascade" }),
-  time: text("time").notNull(),
+  time: text("time").notNull(), // heure de début "HH:MM"
+  endTime: text("end_time"), // heure de fin "HH:MM" (null = non renseignée)
   description: text("description").notNull(),
   cost: integer("cost").notNull().default(0),
 }, (t) => [index("events_day_idx").on(t.dayId)]);

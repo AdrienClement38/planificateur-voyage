@@ -155,10 +155,16 @@ export const tripsApi = {
 
   putItinerary: (
     id: string,
-    itinerary: { day: number; title: string; events: { time: string; description: string; cost: number }[] }[],
+    itinerary: {
+      day: number;
+      title: string;
+      events: { time: string; endTime?: string; description: string; cost: number }[];
+    }[],
   ) => request<TripResp>(`/api/trips/${id}/itinerary`, { method: "PUT", ...body({ itinerary }) }),
-  addEvent: (id: string, b: { day: number; time: string; description: string; cost: number }) =>
-    request<TripResp>(`/api/trips/${id}/events`, { method: "POST", ...body(b) }),
+  addEvent: (
+    id: string,
+    b: { day: number; time: string; endTime?: string; description: string; cost: number },
+  ) => request<TripResp>(`/api/trips/${id}/events`, { method: "POST", ...body(b) }),
   deleteEvent: (id: string, eventId: string) =>
     request<TripResp>(`/api/trips/${id}/events/${eventId}`, { method: "DELETE" }),
 

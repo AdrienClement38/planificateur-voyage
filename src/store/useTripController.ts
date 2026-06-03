@@ -96,6 +96,7 @@ export function useTripController() {
   const [photoCaptionInput, setPhotoCaptionInput] = useState("");
   const [manualEventDay, setManualEventDay] = useState(1);
   const [manualEventTime, setManualEventTime] = useState("10:00");
+  const [manualEventEndTime, setManualEventEndTime] = useState("");
   const [manualEventDesc, setManualEventDesc] = useState("");
   const [manualEventCost, setManualEventCost] = useState(0);
   const [isBudgetDropdownOpen, setIsBudgetDropdownOpen] = useState(false);
@@ -438,12 +439,13 @@ export function useTripController() {
   );
 
   const handleScheduleActivity = useCallback(
-    (act: ActivityProposal, dayNum: number, timeStr = "10:00") => {
+    (act: ActivityProposal, dayNum: number, timeStr = "10:00", endTime?: string) => {
       if (!activeTrip) return;
       void applyMutation(() =>
         tripsApi.addEvent(activeTrip.id, {
           day: dayNum,
           time: timeStr,
+          endTime: endTime || undefined,
           description: `${act.name}${act.source ? ` [${act.source}]` : ""}`,
           cost: act.cost,
         }),
@@ -559,14 +561,24 @@ export function useTripController() {
       const payload = {
         day: Number(manualEventDay),
         time: manualEventTime,
+        endTime: manualEventEndTime.trim() || undefined,
         description: manualEventDesc,
         cost: Number(manualEventCost) || 0,
       };
       setManualEventDesc("");
       setManualEventCost(0);
+      setManualEventEndTime("");
       void applyMutation(() => tripsApi.addEvent(activeTrip.id, payload));
     },
-    [activeTrip, manualEventDay, manualEventTime, manualEventDesc, manualEventCost, applyMutation],
+    [
+      activeTrip,
+      manualEventDay,
+      manualEventTime,
+      manualEventEndTime,
+      manualEventDesc,
+      manualEventCost,
+      applyMutation,
+    ],
   );
 
   const handleDeleteEvent = useCallback(
@@ -750,6 +762,8 @@ export function useTripController() {
     setManualEventDay,
     manualEventTime,
     setManualEventTime,
+    manualEventEndTime,
+    setManualEventEndTime,
     manualEventDesc,
     setManualEventDesc,
     manualEventCost,
