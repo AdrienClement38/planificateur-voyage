@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Check,
   RefreshCw,
-  Search,
 } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
 import {
@@ -64,6 +63,10 @@ export default function ItineraryTab() {
 
   // Pagination par source pour « Voir d'autres idées ».
   const [sourcePage, setSourcePage] = useState<Record<string, number>>({});
+  // Compteur de rafraîchissement : réorganise visiblement la liste à chaque clic.
+  const [refreshTick, setRefreshTick] = useState(0);
+  // Vue « Mes favoris » (activités que j'ai aimées/votées).
+  const [showFavorites, setShowFavorites] = useState(false);
 
   if (!activeTrip || !currentMember) return null;
 
@@ -219,6 +222,20 @@ export default function ItineraryTab() {
     );
   };
 
+  // Statut de planification d'une activité (l'étape du programme qui la porte).
+  const findSchedule = (name: string) => {
+    const n = name.trim().toLowerCase();
+    for (const day of activeTrip.itinerary) {
+      for (const ev of day.events) {
+        const d = ev.description.trim().toLowerCase();
+        if (d === n || d.startsWith(`${n} [`) || d.startsWith(`${n} —`) || d.startsWith(`${n} -`)) {
+          return { day: day.day, time: ev.time, endTime: ev.endTime };
+        }
+      }
+    }
+    return null;
+  };
+
   // Pool de suggestions disponibles = activités du filtre courant, non planifiées.
   const suggestionPool = activeTrip.activities.filter((act) => {
     if (activityFilter === "gyg" && act.source !== "GetYourGuide") return false;
@@ -226,6 +243,23 @@ export default function ItineraryTab() {
     if (activityFilter === "google" && act.source !== "Google Activités") return false;
     return !isPlanned(act.name);
   });
+
+  // Mes favoris = activités que j'ai aimées (vote), planifiées ou non.
+  const favorites = activeTrip.activities.filter((a) => a.votes.includes(currentMember.id));
+
+  // Rafraîchit visiblement l'ordre de la liste (rotation déterministe par tick).
+  const rotate = <T,>(arr: T[], by: number): T[] => {
+    if (arr.length === 0) return arr;
+    const k = (by % arr.length + arr.length) % arr.length;
+    return [...arr.slice(k), ...arr.slice(0, k)];
+  };
+  const listToRender = showFavorites ? favorites : rotate(suggestionPool, refreshTick * 3);
+
+  // « Voir d'autres idées » : réorganise la liste ET tente d'en charger de nouvelles.
+  const seeMore = async () => {
+    setRefreshTick((t) => t + 1);
+    await refreshSuggestions();
+  };
 
   // Onglets de plateforme (déplacés en bas, sous la liste).
   const SOURCE_TABS = [
@@ -250,22 +284,13 @@ export default function ItineraryTab() {
           </p>
         </div>
 
-        <div className="shrink-0 flex items-center gap-1.5 self-end md:self-auto">
-          {activeTrip.selectedDestination ? (
-            <button
-              onClick={handleGenerateItinerary}
-              disabled={isGenerating}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-md transition duration-200 flex items-center gap-1.5 cursor-pointer select-none"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              {isGenerating ? "Chargement des spots..." : "Rechercher des activités 🔍"}
-            </button>
-          ) : (
+        {!activeTrip.selectedDestination && (
+          <div className="shrink-0 self-end md:self-auto">
             <span className="text-[11px] text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-900/30 font-semibold uppercase">
               ⚠️ Votez d'abord une ville gagnante
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {generationError && (
@@ -306,8 +331,10 @@ export default function ItineraryTab() {
           {/* COLUMN 1: SUGGESTIONS POOL & MULTI-SOURCES FINDER */}
           <div className="space-y-4">
             <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
-              📂 Idées de sorties ({suggestionPool.length})
-              {activityFilter !== "all" && (
+              {showFavorites
+                ? `⭐ Mes favoris (${favorites.length})`
+                : `📂 Idées de sorties (${suggestionPool.length})`}
+              {!showFavorites && activityFilter !== "all" && (
                 <span className="text-slate-400 font-medium normal-case">
                   · {FILTER_TO_SOURCE[activityFilter]}
                 </span>
@@ -316,18 +343,20 @@ export default function ItineraryTab() {
 
             {/* Suggestions list scroll box */}
             <div className="space-y-3.5 max-h-[480px] overflow-y-auto pr-1">
-              {suggestionPool.length === 0 && (
+              {listToRender.length === 0 && (
                 <div className="text-center py-8 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-2xl px-4">
-                  🎉 Toutes les idées de cette catégorie sont déjà au programme. Changez de plateforme
-                  ci-dessous ou cliquez sur « Voir d'autres idées ».
+                  {showFavorites
+                    ? "Aucun favori pour l'instant. Cliquez sur 👍 sous une activité pour l'ajouter à tes favoris."
+                    : "🎉 Toutes les idées de cette catégorie sont déjà au programme. Changez de plateforme ci-dessous ou cliquez sur « Voir d'autres idées »."}
                 </div>
               )}
-              {suggestionPool.map((act) => {
+              {listToRender.map((act) => {
                   const isVotedByCurrent = act.votes.includes(currentMember.id);
                   const totalVotes = act.votes.length;
                   const isGYG = act.source === "GetYourGuide";
                   const isAirbnb = act.source === "Airbnb Expériences";
                   const isGoogle = act.source === "Google Activités";
+                  const schedule = findSchedule(act.name);
 
                   return (
                     <div key={act.id} className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2 hover:border-indigo-500/30 transition-all group">
@@ -393,19 +422,26 @@ export default function ItineraryTab() {
                             <span>{totalVotes} vote(s)</span>
                           </button>
 
-                          {/* Bouton qui déplie le mini-planificateur (jour + heures) */}
-                          <button
-                            onClick={() =>
-                              planActId === act.id ? setPlanActId(null) : openPlanner(act)
-                            }
-                            className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition select-none ${
-                              planActId === act.id
-                                ? "bg-indigo-500 text-white"
-                                : "bg-indigo-600 hover:bg-indigo-500 text-white"
-                            }`}
-                          >
-                            <CalendarPlus className="w-3 h-3" /> Planifier
-                          </button>
+                          {/* Déjà au programme → badge ; sinon bouton Planifier */}
+                          {schedule ? (
+                            <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 whitespace-nowrap">
+                              <CalendarPlus className="w-3 h-3" /> Jour {schedule.day} · {schedule.time}
+                              {schedule.endTime ? `–${schedule.endTime}` : ""}
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                planActId === act.id ? setPlanActId(null) : openPlanner(act)
+                              }
+                              className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition select-none ${
+                                planActId === act.id
+                                  ? "bg-indigo-500 text-white"
+                                  : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                              }`}
+                            >
+                              <CalendarPlus className="w-3 h-3" /> Planifier
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -487,30 +523,43 @@ export default function ItineraryTab() {
                 })}
             </div>
 
-            {/* Contrôles en bas : sélecteur de plateforme + un seul bouton */}
+            {/* Contrôles en bas : plateforme / favoris + un seul bouton */}
             <div className="space-y-2.5 pt-1 border-t border-white/10">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                {SOURCE_TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => setActivityFilter(t.key)}
-                    className={`px-2 py-1.5 text-[10.5px] font-bold rounded-lg transition cursor-pointer ${
-                      activityFilter === t.key
-                        ? "bg-indigo-600 text-white"
-                        : "bg-white/5 text-slate-300 hover:bg-white/10"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {SOURCE_TABS.map((t) => {
+                  const active = !showFavorites && activityFilter === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => {
+                        setShowFavorites(false);
+                        setActivityFilter(t.key);
+                      }}
+                      className={`px-2 py-1.5 text-[10.5px] font-bold rounded-lg transition cursor-pointer ${
+                        active ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setShowFavorites(true)}
+                  className={`px-2 py-1.5 text-[10.5px] font-bold rounded-lg transition cursor-pointer ${
+                    showFavorites ? "bg-amber-500 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                  }`}
+                  title="Mes activités favorites (votées) et leur statut de planification"
+                >
+                  ⭐ Favoris{favorites.length > 0 ? ` (${favorites.length})` : ""}
+                </button>
               </div>
 
-              {activeTrip.selectedDestination && (
+              {!showFavorites && activeTrip.selectedDestination && (
                 <button
-                  onClick={refreshSuggestions}
+                  onClick={seeMore}
                   disabled={isGenerating}
                   className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] font-bold py-2.5 rounded-xl transition cursor-pointer"
-                  title="Charger de nouvelles idées pour la plateforme sélectionnée"
+                  title="Rafraîchir la liste et charger de nouvelles idées"
                 >
                   {isGenerating ? (
                     <>
@@ -518,7 +567,7 @@ export default function ItineraryTab() {
                     </>
                   ) : (
                     <>
-                      <Search className="w-3.5 h-3.5" /> Voir d'autres idées
+                      <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres idées
                       {activityFilter !== "all" ? ` (${FILTER_TO_SOURCE[activityFilter]})` : ""}
                     </>
                   )}

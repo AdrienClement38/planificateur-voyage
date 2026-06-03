@@ -572,11 +572,9 @@ export function useTripController() {
         if (fresh.length > 0) {
           await tripsApi.bulkActivities(activeTrip.id, fresh);
           await openTrip(activeTrip.id);
-        } else {
-          setGenerationError(
-            `Plus de nouvelles idées ${source} pour le moment — essayez une autre source.`,
-          );
         }
+        // Aucune nouveauté = silencieux : la liste se réorganise quand même
+        // côté UI, on n'affiche pas d'erreur (le catalogue est simplement épuisé).
         return fresh.length;
       } catch (err) {
         setGenerationError(err instanceof ApiError ? err.message : "Recherche impossible.");
