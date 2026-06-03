@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Check,
   RefreshCw,
+  Search,
 } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
 import {
@@ -34,6 +35,7 @@ export default function ItineraryTab() {
     handleToggleActivityVote,
     handleScheduleActivity,
     handleAutoPlanFromVotes,
+    handleFetchMoreActivities,
     handleDeleteEvent,
     handleUpdateEvent,
     handleAddManualEvent,
@@ -63,8 +65,25 @@ export default function ItineraryTab() {
   // Fenêtre de suggestions (combien on en montre, et à partir d'où).
   const SUGGESTIONS_PER_PAGE = 6;
   const [suggestionOffset, setSuggestionOffset] = useState(0);
+  // Pagination par source pour « Chercher plus sur … ».
+  const [sourcePage, setSourcePage] = useState<Record<string, number>>({});
 
   if (!activeTrip || !currentMember) return null;
+
+  // Libellé de source ↔ filtre.
+  const SOURCE_LABELS: Record<string, string> = {
+    gyg: "GetYourGuide",
+    airbnb: "Airbnb Expériences",
+    google: "Google Activités",
+  };
+
+  // Va chercher un nouveau lot d'activités pour une source, en avançant sa page.
+  const fetchMore = async (sourceLabel: string) => {
+    const page = sourcePage[sourceLabel] ?? 0;
+    await handleFetchMoreActivities(sourceLabel, page);
+    setSourcePage((p) => ({ ...p, [sourceLabel]: page + 1 }));
+    setSuggestionOffset(0);
+  };
 
   /** Étapes d'un jour donné (pour la détection de conflit de créneau). */
   const dayEventsOf = (dayNum: number) =>
@@ -501,15 +520,53 @@ export default function ItineraryTab() {
                 })}
             </div>
 
-            {canShowMore && (
-              <button
-                onClick={() => setSuggestionOffset((o) => o + SUGGESTIONS_PER_PAGE)}
-                className="w-full flex items-center justify-center gap-1.5 bg-white/5 hover:bg-white/10 text-indigo-200 text-[11px] font-bold py-2.5 rounded-xl border border-white/10 transition cursor-pointer"
-                title="Afficher d'autres idées du catalogue"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres suggestions ({suggestionPool.length})
-              </button>
-            )}
+            <div className="space-y-2">
+              {canShowMore && (
+                <button
+                  onClick={() => setSuggestionOffset((o) => o + SUGGESTIONS_PER_PAGE)}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white/5 hover:bg-white/10 text-indigo-200 text-[11px] font-bold py-2.5 rounded-xl border border-white/10 transition cursor-pointer"
+                  title="Faire défiler les idées déjà chargées"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres idées déjà chargées
+                </button>
+              )}
+
+              {/* Chercher de NOUVELLES activités auprès d'une source précise */}
+              {activeTrip.selectedDestination &&
+                (activityFilter === "all" ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        ["GetYourGuide", "GetYourGuide 🎫"],
+                        ["Airbnb Expériences", "Airbnb 🏠"],
+                        ["Google Activités", "Google ✈️"],
+                      ] as const
+                    ).map(([src, label]) => (
+                      <button
+                        key={src}
+                        onClick={() => fetchMore(src)}
+                        disabled={isGenerating}
+                        className="flex items-center justify-center gap-1 bg-indigo-600/90 hover:bg-indigo-600 disabled:opacity-50 text-white text-[10px] font-bold py-2 rounded-xl transition cursor-pointer"
+                        title={`Chercher de nouvelles activités sur ${src}`}
+                      >
+                        <Search className="w-3 h-3 shrink-0" /> {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fetchMore(SOURCE_LABELS[activityFilter])}
+                    disabled={isGenerating}
+                    className="w-full flex items-center justify-center gap-1.5 bg-indigo-600/90 hover:bg-indigo-600 disabled:opacity-50 text-white text-[11px] font-bold py-2.5 rounded-xl transition cursor-pointer"
+                    title={`Chercher de nouvelles activités sur ${SOURCE_LABELS[activityFilter]}`}
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    {isGenerating
+                      ? "Recherche en cours…"
+                      : `Chercher plus sur ${SOURCE_LABELS[activityFilter]}`}
+                  </button>
+                ))}
+            </div>
           </div>
 
           {/* COLUMN 2: COLLABORATIVE ITINERARY TIMELINE */}

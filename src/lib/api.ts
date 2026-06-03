@@ -25,6 +25,10 @@ export interface SuggestActivitiesParams {
   adults?: number;
   checkin?: string;
   checkout?: string;
+  /** Source ciblée pour un lot supplémentaire ("GetYourGuide" | "Airbnb Expériences" | "Google Activités"). */
+  source?: string;
+  /** Page (0-indexée) pour paginer les lots d'une même source. */
+  page?: number;
 }
 
 /**

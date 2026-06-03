@@ -544,6 +544,50 @@ export function useTripController() {
     }
   }, [activeTrip, openTrip]);
 
+  /**
+   * Récupère un lot SUPPLÉMENTAIRE d'activités d'une source précise (bouton
+   * « Chercher plus sur GetYourGuide / Airbnb / Google »), paginé, et l'ajoute
+   * au pool (dédupliqué par nom). Renvoie le nombre de nouveautés ajoutées.
+   */
+  const handleFetchMoreActivities = useCallback(
+    async (source: string, page: number): Promise<number> => {
+      if (!activeTrip || !activeTrip.selectedDestination) return 0;
+      setIsGenerating(true);
+      setGenerationError("");
+      try {
+        const data = (await suggestActivities({
+          destination: activeTrip.selectedDestination,
+          days: activeTrip.targetDays,
+          budgetType: activeTrip.budgetType,
+          adults: activeTrip.members.length || 6,
+          source,
+          page,
+        })) as { activities?: ActivityProposal[] };
+
+        const existingNames = new Set(activeTrip.activities.map((a) => a.name.toLowerCase().trim()));
+        const fresh = (data.activities ?? [])
+          .map(toActivityInput)
+          .filter((a) => !existingNames.has(a.name.toLowerCase().trim()));
+
+        if (fresh.length > 0) {
+          await tripsApi.bulkActivities(activeTrip.id, fresh);
+          await openTrip(activeTrip.id);
+        } else {
+          setGenerationError(
+            `Plus de nouvelles idées ${source} pour le moment — essayez une autre source.`,
+          );
+        }
+        return fresh.length;
+      } catch (err) {
+        setGenerationError(err instanceof ApiError ? err.message : "Recherche impossible.");
+        return 0;
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [activeTrip, openTrip],
+  );
+
   const handleSendChat = useCallback(
     (e: FormEvent) => {
       e.preventDefault();
@@ -808,6 +852,7 @@ export function useTripController() {
     handleScheduleActivity,
     handleAutoPlanFromVotes,
     handleGenerateItinerary,
+    handleFetchMoreActivities,
     handleSendChat,
     handleAddManualEvent,
     handleDeleteEvent,
