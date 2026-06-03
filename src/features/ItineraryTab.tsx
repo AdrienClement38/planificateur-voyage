@@ -62,27 +62,32 @@ export default function ItineraryTab() {
   const [editForm, setEditForm] = useState({ day: 1, start: "10:00", end: "", description: "", cost: 0 });
   const [editError, setEditError] = useState("");
 
-  // Fenêtre de suggestions (combien on en montre, et à partir d'où).
-  const SUGGESTIONS_PER_PAGE = 6;
-  const [suggestionOffset, setSuggestionOffset] = useState(0);
-  // Pagination par source pour « Chercher plus sur … ».
+  // Pagination par source pour « Voir d'autres idées ».
   const [sourcePage, setSourcePage] = useState<Record<string, number>>({});
 
   if (!activeTrip || !currentMember) return null;
 
-  // Libellé de source ↔ filtre.
-  const SOURCE_LABELS: Record<string, string> = {
+  // Filtre courant ↔ libellé de source (null = toutes).
+  const FILTER_TO_SOURCE: Record<string, string | null> = {
+    all: null,
     gyg: "GetYourGuide",
     airbnb: "Airbnb Expériences",
     google: "Google Activités",
   };
+  const ALL_SOURCES = ["GetYourGuide", "Airbnb Expériences", "Google Activités"];
 
   // Va chercher un nouveau lot d'activités pour une source, en avançant sa page.
   const fetchMore = async (sourceLabel: string) => {
     const page = sourcePage[sourceLabel] ?? 0;
     await handleFetchMoreActivities(sourceLabel, page);
     setSourcePage((p) => ({ ...p, [sourceLabel]: page + 1 }));
-    setSuggestionOffset(0);
+  };
+
+  // « Voir d'autres idées » : rafraîchit la source sélectionnée (ou toutes).
+  const refreshSuggestions = async () => {
+    const src = FILTER_TO_SOURCE[activityFilter];
+    if (src) await fetchMore(src);
+    else for (const s of ALL_SOURCES) await fetchMore(s);
   };
 
   /** Étapes d'un jour donné (pour la détection de conflit de créneau). */
@@ -222,18 +227,13 @@ export default function ItineraryTab() {
     return !isPlanned(act.name);
   });
 
-  // Fenêtre visible (avec rotation circulaire pour « voir d'autres suggestions »).
-  const canShowMore = suggestionPool.length > SUGGESTIONS_PER_PAGE;
-  const safeOffset = suggestionPool.length > 0 ? suggestionOffset % suggestionPool.length : 0;
-  const visibleSuggestions = canShowMore
-    ? [...suggestionPool, ...suggestionPool].slice(safeOffset, safeOffset + SUGGESTIONS_PER_PAGE)
-    : suggestionPool;
-
-  // Change de filtre source en réinitialisant la fenêtre.
-  const setFilter = (f: typeof activityFilter) => {
-    setActivityFilter(f);
-    setSuggestionOffset(0);
-  };
+  // Onglets de plateforme (déplacés en bas, sous la liste).
+  const SOURCE_TABS = [
+    { key: "all", label: "Toutes" },
+    { key: "gyg", label: "GetYourGuide 🎫" },
+    { key: "airbnb", label: "Airbnb 🏠" },
+    { key: "google", label: "Google ✈️" },
+  ] as const;
 
   return (
     <div id="bento-card-itinerary" className="bg-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden space-y-6 animate-fadeIn">
@@ -305,57 +305,24 @@ export default function ItineraryTab() {
 
           {/* COLUMN 1: SUGGESTIONS POOL & MULTI-SOURCES FINDER */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
-                📂 Idées de sorties ({suggestionPool.length})
-              </h4>
-
-              {/* Filters tab buttons */}
-              <div className="flex gap-1 bg-white/5 p-1 rounded-xl shrink-0 overflow-x-auto max-w-[340px] sm:max-w-none">
-                <button
-                  onClick={() => setFilter("all")}
-                  className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    activityFilter === "all" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Toutes
-                </button>
-                <button
-                  onClick={() => setFilter("gyg")}
-                  className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    activityFilter === "gyg" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  GetYourGuide 🎫
-                </button>
-                <button
-                  onClick={() => setFilter("airbnb")}
-                  className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    activityFilter === "airbnb" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Airbnb expériences 🏠
-                </button>
-                <button
-                  onClick={() => setFilter("google")}
-                  className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    activityFilter === "google" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Google Activités ✈️
-                </button>
-              </div>
-            </div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+              📂 Idées de sorties ({suggestionPool.length})
+              {activityFilter !== "all" && (
+                <span className="text-slate-400 font-medium normal-case">
+                  · {FILTER_TO_SOURCE[activityFilter]}
+                </span>
+              )}
+            </h4>
 
             {/* Suggestions list scroll box */}
             <div className="space-y-3.5 max-h-[480px] overflow-y-auto pr-1">
-              {visibleSuggestions.length === 0 && (
+              {suggestionPool.length === 0 && (
                 <div className="text-center py-8 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-2xl px-4">
-                  🎉 Toutes les idées de cette catégorie sont déjà au programme. Changez de filtre ou
-                  relancez une recherche pour en découvrir d'autres.
+                  🎉 Toutes les idées de cette catégorie sont déjà au programme. Changez de plateforme
+                  ci-dessous ou cliquez sur « Voir d'autres idées ».
                 </div>
               )}
-              {visibleSuggestions.map((act) => {
+              {suggestionPool.map((act) => {
                   const isVotedByCurrent = act.votes.includes(currentMember.id);
                   const totalVotes = act.votes.length;
                   const isGYG = act.source === "GetYourGuide";
@@ -520,52 +487,43 @@ export default function ItineraryTab() {
                 })}
             </div>
 
-            <div className="space-y-2">
-              {canShowMore && (
-                <button
-                  onClick={() => setSuggestionOffset((o) => o + SUGGESTIONS_PER_PAGE)}
-                  className="w-full flex items-center justify-center gap-1.5 bg-white/5 hover:bg-white/10 text-indigo-200 text-[11px] font-bold py-2.5 rounded-xl border border-white/10 transition cursor-pointer"
-                  title="Faire défiler les idées déjà chargées"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres idées déjà chargées
-                </button>
-              )}
-
-              {/* Chercher de NOUVELLES activités auprès d'une source précise */}
-              {activeTrip.selectedDestination &&
-                (activityFilter === "all" ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    {(
-                      [
-                        ["GetYourGuide", "GetYourGuide 🎫"],
-                        ["Airbnb Expériences", "Airbnb 🏠"],
-                        ["Google Activités", "Google ✈️"],
-                      ] as const
-                    ).map(([src, label]) => (
-                      <button
-                        key={src}
-                        onClick={() => fetchMore(src)}
-                        disabled={isGenerating}
-                        className="flex items-center justify-center gap-1 bg-indigo-600/90 hover:bg-indigo-600 disabled:opacity-50 text-white text-[10px] font-bold py-2 rounded-xl transition cursor-pointer"
-                        title={`Chercher de nouvelles activités sur ${src}`}
-                      >
-                        <Search className="w-3 h-3 shrink-0" /> {label}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
+            {/* Contrôles en bas : sélecteur de plateforme + un seul bouton */}
+            <div className="space-y-2.5 pt-1 border-t border-white/10">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {SOURCE_TABS.map((t) => (
                   <button
-                    onClick={() => fetchMore(SOURCE_LABELS[activityFilter])}
-                    disabled={isGenerating}
-                    className="w-full flex items-center justify-center gap-1.5 bg-indigo-600/90 hover:bg-indigo-600 disabled:opacity-50 text-white text-[11px] font-bold py-2.5 rounded-xl transition cursor-pointer"
-                    title={`Chercher de nouvelles activités sur ${SOURCE_LABELS[activityFilter]}`}
+                    key={t.key}
+                    onClick={() => setActivityFilter(t.key)}
+                    className={`px-2 py-1.5 text-[10.5px] font-bold rounded-lg transition cursor-pointer ${
+                      activityFilter === t.key
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white/5 text-slate-300 hover:bg-white/10"
+                    }`}
                   >
-                    <Search className="w-3.5 h-3.5" />
-                    {isGenerating
-                      ? "Recherche en cours…"
-                      : `Chercher plus sur ${SOURCE_LABELS[activityFilter]}`}
+                    {t.label}
                   </button>
                 ))}
+              </div>
+
+              {activeTrip.selectedDestination && (
+                <button
+                  onClick={refreshSuggestions}
+                  disabled={isGenerating}
+                  className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] font-bold py-2.5 rounded-xl transition cursor-pointer"
+                  title="Charger de nouvelles idées pour la plateforme sélectionnée"
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Recherche en cours…
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-3.5 h-3.5" /> Voir d'autres idées
+                      {activityFilter !== "all" ? ` (${FILTER_TO_SOURCE[activityFilter]})` : ""}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
