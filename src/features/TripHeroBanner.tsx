@@ -179,7 +179,7 @@ export default function TripHeroBanner() {
             </button>
 
             {isBudgetDropdownOpen && (
-              <div className="absolute right-0 mt-2.5 w-80 bg-slate-900 border border-slate-800 rounded-2xl p-4.5 shadow-xl z-40 text-white text-left text-xs space-y-3.5 animate-fadeIn">
+              <div className="absolute left-0 mt-2.5 w-80 max-w-[calc(100vw-3rem)] bg-slate-900 border border-slate-800 rounded-2xl p-4.5 shadow-xl z-40 text-white text-left text-xs space-y-3.5 animate-fadeIn">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                   <span className="font-extrabold text-[10.5px] uppercase text-emerald-400 tracking-wider">
                     💰 Budget par participant estimé
