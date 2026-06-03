@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { ChevronDown, Link2, X } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { ChevronDown, Link2, Pencil, X } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
+
+const BUDGET_TYPES = ["Économique", "Modéré", "Luxe"] as const;
 
 /** Avatar par défaut (dicebear) si le membre n'a pas d'image. */
 function avatarUrl(name: string, custom?: string | null): string {
@@ -27,13 +29,51 @@ export default function TripHeroBanner() {
     selectedTripId,
     handleSelectTrip,
     handleDeleteTrip,
+    handlePatchTrip,
     setActivePage,
   } = useTripStore();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
+  // Édition du voyage en cours (nom, destination, durée, type, description).
+  const [editOpen, setEditOpen] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    selectedDestination: "",
+    targetDays: 4,
+    budgetType: "Modéré" as (typeof BUDGET_TYPES)[number],
+    description: "",
+  });
+
   if (!activeTrip) return null;
+
+  const openEdit = () => {
+    setForm({
+      name: activeTrip.name,
+      selectedDestination: activeTrip.selectedDestination ?? "",
+      targetDays: activeTrip.targetDays,
+      budgetType: (BUDGET_TYPES.includes(activeTrip.budgetType as (typeof BUDGET_TYPES)[number])
+        ? activeTrip.budgetType
+        : "Modéré") as (typeof BUDGET_TYPES)[number],
+      description: activeTrip.description ?? "",
+    });
+    setEditOpen(true);
+  };
+
+  const submitEdit = (e: FormEvent) => {
+    e.preventDefault();
+    const name = form.name.trim();
+    if (!name) return;
+    handlePatchTrip({
+      name,
+      selectedDestination: form.selectedDestination.trim(),
+      targetDays: form.targetDays,
+      budgetType: form.budgetType,
+      description: form.description.trim(),
+    });
+    setEditOpen(false);
+  };
 
   const copyCode = () => {
     navigator.clipboard.writeText(activeTrip.id).then(
@@ -153,6 +193,13 @@ export default function TripHeroBanner() {
             <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg">
               🎚️ {activeTrip.budgetType}
             </span>
+            <button
+              onClick={openEdit}
+              className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 text-xs font-bold px-2.5 py-1 rounded-lg transition cursor-pointer"
+              title="Modifier le voyage (nom, durée, type…)"
+            >
+              <Pencil className="w-3 h-3" /> Modifier
+            </button>
           </div>
         </div>
 
@@ -346,6 +393,134 @@ export default function TripHeroBanner() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Fenêtre d'édition du voyage */}
+      {editOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
+          onClick={() => setEditOpen(false)}
+        >
+          <form
+            onSubmit={submitEdit}
+            className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4 text-left max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-indigo-600" /> Modifier le voyage
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">
+                Nom du voyage
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={120}
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">
+                Destination
+              </label>
+              <input
+                type="text"
+                maxLength={200}
+                value={form.selectedDestination}
+                onChange={(e) => setForm((f) => ({ ...f, selectedDestination: e.target.value }))}
+                placeholder="Laisser vide pour « à définir »"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">
+                Durée du séjour
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={form.targetDays}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      targetDays: Math.min(60, Math.max(1, Number(e.target.value) || 1)),
+                    }))
+                  }
+                  className="w-24 bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
+                />
+                <span className="text-sm font-semibold text-slate-500">jours</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">
+                Type de budget
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {BUDGET_TYPES.map((bt) => (
+                  <button
+                    key={bt}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, budgetType: bt }))}
+                    className={`py-2.5 rounded-2xl text-xs font-bold border transition cursor-pointer ${
+                      form.budgetType === bt
+                        ? "bg-indigo-600 text-white border-indigo-700"
+                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {bt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">
+                Description (optionnel)
+              </label>
+              <textarea
+                rows={2}
+                maxLength={2000}
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden resize-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl transition text-sm cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition text-sm cursor-pointer"
+              >
+                Enregistrer
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </section>
