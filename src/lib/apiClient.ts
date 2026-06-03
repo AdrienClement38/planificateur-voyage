@@ -163,8 +163,26 @@ export const tripsApi = {
   ) => request<TripResp>(`/api/trips/${id}/itinerary`, { method: "PUT", ...body({ itinerary }) }),
   addEvent: (
     id: string,
-    b: { day: number; time: string; endTime?: string; description: string; cost: number },
+    b: {
+      day: number;
+      time: string;
+      endTime?: string;
+      description: string;
+      cost: number;
+      bookingUrl?: string;
+    },
   ) => request<TripResp>(`/api/trips/${id}/events`, { method: "POST", ...body(b) }),
+  updateEvent: (
+    id: string,
+    eventId: string,
+    b: {
+      time?: string;
+      endTime?: string | null;
+      description?: string;
+      cost?: number;
+      bookingUrl?: string | null;
+    },
+  ) => request<TripResp>(`/api/trips/${id}/events/${eventId}`, { method: "PATCH", ...body(b) }),
   deleteEvent: (id: string, eventId: string) =>
     request<TripResp>(`/api/trips/${id}/events/${eventId}`, { method: "DELETE" }),
 

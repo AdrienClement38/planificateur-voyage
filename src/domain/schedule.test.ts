@@ -4,6 +4,8 @@ import {
   addMinutesToTime,
   computeEndTime,
   isValidTime,
+  slotsOverlap,
+  findConflictingEvent,
 } from "./schedule";
 
 describe("parseDurationToMinutes", () => {
@@ -88,5 +90,39 @@ describe("isValidTime", () => {
     expect(isValidTime("24:00")).toBe(false);
     expect(isValidTime("10:60")).toBe(false);
     expect(isValidTime("midi")).toBe(false);
+  });
+});
+
+describe("slotsOverlap", () => {
+  it("détecte un chevauchement", () => {
+    expect(slotsOverlap("10:00", "12:00", "11:00", "13:00")).toBe(true);
+    expect(slotsOverlap("10:00", "18:30", "14:00", "15:00")).toBe(true); // inclus
+  });
+  it("autorise les créneaux adjacents", () => {
+    expect(slotsOverlap("11:00", "12:00", "12:00", "13:00")).toBe(false);
+    expect(slotsOverlap("10:00", "11:00", "09:00", "10:00")).toBe(false);
+  });
+  it("autorise les créneaux disjoints", () => {
+    expect(slotsOverlap("10:00", "11:00", "14:00", "15:00")).toBe(false);
+  });
+  it("traite une fin absente comme un instant", () => {
+    expect(slotsOverlap("12:00", undefined, "10:00", "18:00")).toBe(true); // point dans le créneau
+    expect(slotsOverlap("19:00", undefined, "10:00", "18:00")).toBe(false);
+  });
+});
+
+describe("findConflictingEvent", () => {
+  const events = [
+    { id: "a", time: "10:00", endTime: "18:30", description: "Excursion" },
+    { id: "b", time: "20:00", endTime: "22:00", description: "Dîner" },
+  ];
+  it("renvoie l'étape en conflit", () => {
+    expect(findConflictingEvent(events, "14:00", "15:00")?.id).toBe("a");
+  });
+  it("renvoie null si le créneau est libre", () => {
+    expect(findConflictingEvent(events, "18:30", "19:30")).toBeNull();
+  });
+  it("ignore l'étape en cours d'édition", () => {
+    expect(findConflictingEvent(events, "10:00", "18:30", "a")).toBeNull();
   });
 });

@@ -448,6 +448,7 @@ export function useTripController() {
           endTime: endTime || undefined,
           description: `${act.name}${act.source ? ` [${act.source}]` : ""}`,
           cost: act.cost,
+          bookingUrl: act.bookingUrl || undefined,
         }),
       );
     },
@@ -585,6 +586,23 @@ export function useTripController() {
     (_dayNum: number, eventId: string) => {
       if (!activeTrip) return;
       void applyMutation(() => tripsApi.deleteEvent(activeTrip.id, eventId));
+    },
+    [activeTrip, applyMutation],
+  );
+
+  const handleUpdateEvent = useCallback(
+    (
+      eventId: string,
+      fields: {
+        time?: string;
+        endTime?: string | null;
+        description?: string;
+        cost?: number;
+        bookingUrl?: string | null;
+      },
+    ) => {
+      if (!activeTrip) return;
+      void applyMutation(() => tripsApi.updateEvent(activeTrip.id, eventId, fields));
     },
     [activeTrip, applyMutation],
   );
@@ -793,6 +811,7 @@ export function useTripController() {
     handleSendChat,
     handleAddManualEvent,
     handleDeleteEvent,
+    handleUpdateEvent,
     handleAddAvailability,
     handleDeleteAvailability,
     handleAddManualDoc,

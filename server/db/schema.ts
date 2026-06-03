@@ -154,6 +154,7 @@ export const events = pgTable("events", {
   endTime: text("end_time"), // heure de fin "HH:MM" (null = non renseignée)
   description: text("description").notNull(),
   cost: integer("cost").notNull().default(0),
+  bookingUrl: text("booking_url"), // lien de l'offre (depuis la suggestion)
 }, (t) => [index("events_day_idx").on(t.dayId)]);
 
 export const messages = pgTable("messages", {

@@ -75,3 +75,54 @@ export function computeEndTime(startTime: string, duration?: string | null): Com
     minutes,
   };
 }
+
+/** Minutes depuis minuit pour "HH:MM", ou null si invalide. */
+function toMinutes(time: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+/**
+ * Vrai si deux créneaux [début, fin) se chevauchent. Une fin absente est
+ * traitée comme un instant (= début). Les créneaux adjacents (11:00–12:00 puis
+ * 12:00–13:00) ne se chevauchent PAS.
+ */
+export function slotsOverlap(
+  aStart: string,
+  aEnd: string | undefined,
+  bStart: string,
+  bEnd: string | undefined,
+): boolean {
+  const s1 = toMinutes(aStart);
+  const s2 = toMinutes(bStart);
+  if (s1 === null || s2 === null) return false;
+  const e1 = toMinutes(aEnd ?? aStart) ?? s1;
+  const e2 = toMinutes(bEnd ?? bStart) ?? s2;
+  return s1 < e2 && s2 < e1;
+}
+
+export interface SlotLike {
+  id: string;
+  time: string;
+  endTime?: string;
+  description?: string;
+}
+
+/**
+ * Renvoie la première étape d'un jour en conflit avec le créneau [start, end),
+ * ou null si le créneau est libre. `excludeId` permet d'ignorer l'étape en
+ * cours d'édition.
+ */
+export function findConflictingEvent(
+  events: SlotLike[],
+  start: string,
+  end: string | undefined,
+  excludeId?: string,
+): SlotLike | null {
+  for (const ev of events) {
+    if (excludeId && ev.id === excludeId) continue;
+    if (slotsOverlap(start, end, ev.time, ev.endTime)) return ev;
+  }
+  return null;
+}

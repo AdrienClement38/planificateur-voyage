@@ -140,6 +140,7 @@ export async function loadTripAggregate(tripId: string): Promise<Trip | null> {
           endTime: e.endTime ?? undefined,
           description: e.description,
           cost: e.cost,
+          bookingUrl: e.bookingUrl ?? undefined,
         }))
         .sort((a, b) => a.time.localeCompare(b.time)),
     })),

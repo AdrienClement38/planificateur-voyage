@@ -40,6 +40,8 @@ export interface ItineraryEvent {
   endTime?: string;
   description: string;
   cost: number;
+  /** Lien de l'offre/booking, conservé depuis la suggestion (optionnel). */
+  bookingUrl?: string;
 }
 
 export interface ItineraryDay {

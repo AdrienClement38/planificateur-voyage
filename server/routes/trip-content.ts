@@ -264,6 +264,7 @@ router.post("/:id/events", requireMembership, async (req, res) => {
       endTime: z.string().optional(),
       description: z.string().min(1),
       cost: z.number().int().default(0),
+      bookingUrl: z.string().optional(),
     })
     .safeParse(req.body);
   if (!parsed.success) {
@@ -290,7 +291,39 @@ router.post("/:id/events", requireMembership, async (req, res) => {
     endTime: parsed.data.endTime ?? null,
     description: parsed.data.description,
     cost: parsed.data.cost,
+    bookingUrl: parsed.data.bookingUrl ?? null,
   });
+  await respondTrip(res, req.params.id);
+});
+
+// Modifie une étape existante (créneau, nom, coût, lien).
+router.patch("/:id/events/:eventId", requireMembership, async (req, res) => {
+  const parsed = z
+    .object({
+      time: z.string().optional(),
+      endTime: z.string().nullable().optional(),
+      description: z.string().min(1).optional(),
+      cost: z.number().int().optional(),
+      bookingUrl: z.string().nullable().optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Étape invalide." });
+    return;
+  }
+  // L'étape doit appartenir à un jour de CE voyage.
+  const dayIds = (
+    await db
+      .select({ id: itineraryDays.id })
+      .from(itineraryDays)
+      .where(eq(itineraryDays.tripId, req.params.id))
+  ).map((d) => d.id);
+  if (dayIds.length > 0 && Object.keys(parsed.data).length > 0) {
+    await db
+      .update(events)
+      .set(parsed.data)
+      .where(and(eq(events.id, req.params.eventId), inArray(events.dayId, dayIds)));
+  }
   await respondTrip(res, req.params.id);
 });
 
