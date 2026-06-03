@@ -77,20 +77,19 @@ export default function ItineraryTab() {
     airbnb: "Airbnb Expériences",
     google: "Google Activités",
   };
-  const ALL_SOURCES = ["GetYourGuide", "Airbnb Expériences", "Google Activités"];
-
-  // Va chercher un nouveau lot d'activités pour une source, en avançant sa page.
+  // Va chercher un lot d'idées thématiques supplémentaires pour une source.
   const fetchMore = async (sourceLabel: string) => {
     const page = sourcePage[sourceLabel] ?? 0;
     await handleFetchMoreActivities(sourceLabel, page);
     setSourcePage((p) => ({ ...p, [sourceLabel]: page + 1 }));
   };
 
-  // « Voir d'autres idées » : rafraîchit la source sélectionnée (ou toutes).
+  // « Voir d'autres idées » : sur une source précise → idées thématiques en plus ;
+  // sur « Toutes » → (re)cherche les VRAIES activités géolocalisées du lieu.
   const refreshSuggestions = async () => {
     const src = FILTER_TO_SOURCE[activityFilter];
     if (src) await fetchMore(src);
-    else for (const s of ALL_SOURCES) await fetchMore(s);
+    else await handleGenerateItinerary();
   };
 
   /** Étapes d'un jour donné (pour la détection de conflit de créneau). */
