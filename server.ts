@@ -12,6 +12,7 @@ import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
 import { createServer } from "node:http";
 import { initRealtime } from "./server/realtime";
+import { fetchPlaceActivities } from "./server/services/places";
 
 dotenv.config();
 
@@ -430,13 +431,23 @@ async function buildOfflineItinerary(
   const lodgingCost = budgetType === "Économique" ? 35 : budgetType === "Luxe" ? 175 : 75;
   const transportCost = budgetType === "Économique" ? 7 : budgetType === "Luxe" ? 32 : 14;
 
-  // Retrieve curated outputs from our 3 platforms
-  const gygActs = generateGetYourGuideActivities(destination, costMultiplier);
-  const airbnbActs = generateAirbnbExperiences(destination, costMultiplier, adults, checkin, checkout);
-  const googleActs = generateGoogleActivities(destination, costMultiplier);
+  // 1) Vraies attractions géolocalisées (Wikipédia + OpenStreetMap).
+  let baseActivities: Activity[] = [];
+  try {
+    const real = await fetchPlaceActivities(destination, costMultiplier);
+    if (real.length >= 6) baseActivities = real;
+  } catch {
+    /* réseau indisponible : on bascule sur le catalogue hors-ligne ci-dessous */
+  }
 
-  // Merge the simulated lists
-  const baseActivities = [...gygActs, ...airbnbActs, ...googleActs];
+  // 2) Repli hors-ligne : catalogue curé / templates des 3 plateformes.
+  if (baseActivities.length < 6) {
+    baseActivities = [
+      ...generateGetYourGuideActivities(destination, costMultiplier),
+      ...generateAirbnbExperiences(destination, costMultiplier, adults, checkin, checkout),
+      ...generateGoogleActivities(destination, costMultiplier),
+    ];
+  }
 
   // Map all activities with proper indices, emulating user/prompter source
   const activities = baseActivities.map((act, index) => ({
