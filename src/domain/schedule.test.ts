@@ -109,6 +109,10 @@ describe("slotsOverlap", () => {
     expect(slotsOverlap("12:00", undefined, "10:00", "18:00")).toBe(true); // point dans le créneau
     expect(slotsOverlap("19:00", undefined, "10:00", "18:00")).toBe(false);
   });
+  it("considère un même début comme un conflit, même sans fin", () => {
+    expect(slotsOverlap("10:00", undefined, "10:00", undefined)).toBe(true);
+    expect(slotsOverlap("10:00", "11:00", "10:00", "12:00")).toBe(true);
+  });
 });
 
 describe("findConflictingEvent", () => {

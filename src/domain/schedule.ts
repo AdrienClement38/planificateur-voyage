@@ -97,6 +97,8 @@ export function slotsOverlap(
   const s1 = toMinutes(aStart);
   const s2 = toMinutes(bStart);
   if (s1 === null || s2 === null) return false;
+  // Même heure de début = conflit, même si l'une des étapes n'a pas de fin.
+  if (s1 === s2) return true;
   const e1 = toMinutes(aEnd ?? aStart) ?? s1;
   const e2 = toMinutes(bEnd ?? bStart) ?? s2;
   return s1 < e2 && s2 < e1;
