@@ -104,6 +104,27 @@ function bookingUrl(src: Src, name: string, dest: string): string {
   return `https://www.google.com/search?q=${q}`;
 }
 
+/**
+ * Lien le plus pertinent et RÉEL pour un POI :
+ *  1. son site officiel (balise OSM `website`) ;
+ *  2. sinon son article Wikipédia exact ;
+ *  3. sinon une recherche (GetYourGuide / Google) sur son nom.
+ */
+function bestLink(tags: Record<string, string>, src: Src, name: string, dest: string): string {
+  const site = tags.website || tags["contact:website"] || tags.url;
+  if (site && /^https?:\/\//i.test(site)) return site.split(";")[0].trim();
+  const wp = tags.wikipedia; // "fr:Colisée"
+  const i = wp ? wp.indexOf(":") : -1;
+  if (wp && i > 0) {
+    const lang = wp.slice(0, i);
+    const title = wp.slice(i + 1);
+    if (/^[a-z]{2,3}$/.test(lang) && title) {
+      return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
+    }
+  }
+  return bookingUrl(src, name, dest);
+}
+
 type RawPlace = Omit<PlaceActivity, "cost"> & { baseCost: number };
 const cache = new Map<string, { at: number; places: RawPlace[] }>();
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
@@ -186,7 +207,7 @@ async function discoverRaw(destination: string): Promise<RawPlace[]> {
       rating: 4.6,
       reviewsCount: 150 + ((e.name.length * 53) % 3500),
       duration,
-      bookingUrl: bookingUrl(src, e.name, destination),
+      bookingUrl: bestLink(e.tags, src, e.name, destination),
     };
   });
 
