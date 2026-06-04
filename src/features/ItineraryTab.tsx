@@ -345,7 +345,7 @@ export default function ItineraryTab() {
                           src={act.imageUrl}
                           alt={act.name}
                           loading="lazy"
-                          className="w-full h-28 object-cover rounded-xl border border-white/10"
+                          className="w-full h-44 object-cover object-center rounded-xl border border-white/10"
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).style.display = "none";
                           }}

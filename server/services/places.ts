@@ -347,7 +347,46 @@ const WD_BAD_TYPES = new Set([
   "Q36784", "Q3551775", "Q4671277", "Q15893266",
   "Q391009", "Q474717", "Q1896989", "Q2311325",
   "Q1063239", "Q1147274", "Q1414472", "Q16567729",
+  // Œuvres d'art (on visite le musée, pas l'œuvre) et prélatures religieuses.
+  "Q3305213", "Q860861", "Q22669139", "Q838948", "Q4502142", "Q179700", "Q250867",
+  // Entreprises/sociétés (le siège est un bâtiment, mais ça ne se « visite » pas).
+  "Q891723", "Q6881511", "Q783794", "Q4830453",
 ]);
+
+// Super-types « lieu » (allow-list) : un candidat n'est gardé que s'il est
+// sous-classe de l'un d'eux. Couvre bâtiments, monuments, places, avenues,
+// quartiers, parcs, reliefs, plans d'eau, sites… et exclut tout le reste
+// (événements, traités, affaires, œuvres) d'un seul filtre robuste.
+const WD_PLACE_TYPES = [
+  "wd:Q811979", // structure architecturale (bâtiments, tours, ponts, églises, palais…)
+  "wd:Q570116", // attraction touristique
+  "wd:Q839954", // site archéologique
+  "wd:Q8502", "wd:Q54050", "wd:Q271669", // montagne, colline, relief
+  "wd:Q23397", "wd:Q15324", "wd:Q23442", // lac, plan d'eau, île
+  "wd:Q22698", "wd:Q4421", // parc, forêt
+  "wd:Q83620", "wd:Q174782", // voie (avenue/rue), place publique
+  "wd:Q123705", "wd:Q3257686", // quartier, localité
+  "wd:Q39614", // cimetière
+];
+
+/** Sous-ensemble des Q-ids qui SONT des lieux (sous-classe d'un super-type « lieu »). */
+async function wikidataPlaceFilter(qids: string[]): Promise<Set<string>> {
+  const set = new Set<string>();
+  if (qids.length === 0) return set;
+  const values = qids.map((q) => `wd:${q}`).join(" ");
+  const sparql =
+    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
+    `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } }`;
+  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+  const data = (await fetchJson(url, 8000)) as {
+    results?: { bindings?: Array<{ item?: { value?: string } }> };
+  } | null;
+  for (const b of data?.results?.bindings ?? []) {
+    const id = b.item?.value?.split("/").pop();
+    if (id) set.add(id);
+  }
+  return set;
+}
 
 async function discoverWikidata(
   lat: number,
@@ -398,10 +437,21 @@ async function discoverWikidata(
   }
 
   const destLow = destination.toLowerCase().split(/[,(]/)[0].trim();
+  // Candidats triés par notoriété, hors types évidents non visitables et hors
+  // destination elle-même.
+  const candidates = [...byId.entries()]
+    .filter(([, a]) => ![...a.types].some((t) => WD_BAD_TYPES.has(t)) && a.label.toLowerCase() !== destLow)
+    .sort((a, b) => b[1].sitelinks - a[1].sitelinks)
+    .slice(0, 30);
+  if (candidates.length === 0) return [];
+
+  // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
+  // d'un coup les événements, traités, affaires, œuvres… géotaggés au même endroit.
+  const placeIds = await wikidataPlaceFilter(candidates.map(([id]) => id));
+
   const out: PlaceActivity[] = [];
-  for (const a of [...byId.values()].sort((x, y) => y.sitelinks - x.sitelinks)) {
-    if ([...a.types].some((t) => WD_BAD_TYPES.has(t))) continue; // type non visitable
-    if (a.label.toLowerCase() === destLow) continue; // la destination elle-même
+  for (const [id, a] of candidates) {
+    if (placeIds.size > 0 && !placeIds.has(id)) continue; // pas un lieu → écarté
     const { category, duration } = classifyTitle(a.label);
     out.push({
       name: a.label,
@@ -412,7 +462,7 @@ async function discoverWikidata(
       provider: "Wikidata",
       fame: a.sitelinks,
       wikiTitle: a.label,
-      imageUrl: a.image ? a.image.replace(/^http:/, "https:") + "?width=640" : undefined,
+      imageUrl: a.image ? a.image.replace(/^http:/, "https:") + "?width=800" : undefined,
     });
     if (out.length >= 25) break;
   }
@@ -662,7 +712,7 @@ const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
 // administratives (province, métropole, région…) et événements (festival,
 // championnat…) — ce ne sont pas des lieux à visiter.
 const NOISE_BLOCK =
-  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|universit[ée]|saint-si[èe]ge|ordre souverain|convention|trait[ée] de\b|\baccord\b|conf[ée]rence|protocole|\bpacte\b|\bm[ée]tro\b|organisation|\bagence\b|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
+  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|universit[ée]|saint-si[èe]ge|ordre souverain|pr[ée]lature|convention|trait[ée] de\b|\baccord\b|conf[ée]rence|protocole|\bpacte\b|\bann[ée]e des\b|\bm[ée]tro\b|organisation|\bagence\b|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
 
 /**
  * Clé de dédoublonnage : minuscule, sans accents/ponctuation, sans le suffixe
@@ -708,7 +758,7 @@ async function enrichBatch(batch: PlaceActivity[]): Promise<void> {
   const url =
     `https://fr.wikipedia.org/w/api.php?action=query&format=json&redirects=1` +
     `&prop=extracts|pageimages|langlinks&exintro&explaintext&exsentences=2&exlimit=20&lllimit=500` +
-    `&piprop=thumbnail&pithumbsize=640&pilimit=50&titles=${encodeURIComponent(titles)}`;
+    `&piprop=thumbnail&pithumbsize=800&pilimit=50&titles=${encodeURIComponent(titles)}`;
   let data = (await fetchJson(url, 10000)) as RawWikiResponse | null;
   if (!data?.query?.pages) {
     await new Promise((r) => setTimeout(r, 700)); // petit répit si throttle/réseau
@@ -821,14 +871,15 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const withPhoto = ranked.filter((p) => p.imageUrl);
     const pool = withPhoto.length >= 5 ? withPhoto : ranked;
 
-    // Variété (max 4 / catégorie) + plafond à 12 pépites.
+    // Variété (max 7 / catégorie) + plafond à 16 pépites. Plafond catégorie assez
+    // haut pour ne pas affamer les villes mono-thème (Rome = surtout Culture).
     const perCat: Record<string, number> = {};
     const curated: PlaceActivity[] = [];
     for (const p of pool) {
       perCat[p.category] = (perCat[p.category] ?? 0) + 1;
-      if (perCat[p.category] > 4) continue;
+      if (perCat[p.category] > 7) continue;
       curated.push(p);
-      if (curated.length >= 12) break;
+      if (curated.length >= 16) break;
     }
 
     if (curated.length > 0) cache.set(key, { at: Date.now(), places: curated });
