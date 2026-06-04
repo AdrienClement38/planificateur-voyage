@@ -322,6 +322,103 @@ async function discoverWikipedia(
   });
 }
 
+// ------------------------------------------------- Source : Wikidata SPARQL (notoriété mondiale)
+
+// Dans les villes denses, la recherche de PROXIMITÉ (OSM/Wikipédia) rate les
+// icônes un peu éloignées du centre (Tour Eiffel, Louvre…). Wikidata SPARQL
+// classe par NOTORIÉTÉ (sitelinks = nb de Wikipédia), ce qui fait remonter les
+// incontournables. Seuil élevé (≥20) → rapide même à Paris, et pile sur les
+// monuments mondiaux. Les petites villes en tirent peu (le socle les couvre).
+
+// Types Wikidata NON visitables (notoriété trompeuse) : villes, pays, langues,
+// organisations, personnes, événements, régions/périodes, universités.
+const WD_BAD_TYPES = new Set([
+  "Q515", "Q1549591", "Q5119", "Q484170", "Q3957", "Q532", "Q15284", "Q702842",
+  "Q6256", "Q3624078", "Q7275", "Q3024240",
+  "Q34770",
+  "Q43229", "Q193483", "Q327333", "Q163740", "Q4830453", "Q161726",
+  "Q5",
+  "Q1656682", "Q1190554", "Q13418847", "Q178561", "Q198", "Q2223653", "Q3199915",
+  "Q56061", "Q10864048", "Q82794", "Q34876", "Q1799794", "Q15916867",
+  "Q11514315", "Q11772",
+  "Q3918", "Q38723",
+  "Q41710",
+  // Régions, universités historiques, entités/ordres/traités de droit international.
+  "Q36784", "Q3551775", "Q4671277", "Q15893266",
+  "Q391009", "Q474717", "Q1896989", "Q2311325",
+  "Q1063239", "Q1147274", "Q1414472", "Q16567729",
+]);
+
+async function discoverWikidata(
+  lat: number,
+  lon: number,
+  destination: string,
+): Promise<PlaceActivity[]> {
+  const sparql =
+    `SELECT ?item ?label ?sitelinks ?type ?image WHERE {` +
+    `SERVICE wikibase:around { ?item wdt:P625 ?c. bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral. bd:serviceParam wikibase:radius "6". }` +
+    `?item wikibase:sitelinks ?sitelinks. FILTER(?sitelinks >= 20)` +
+    `?item wdt:P31 ?type. ?item rdfs:label ?label. FILTER(lang(?label) = "fr")` +
+    `OPTIONAL { ?item wdt:P18 ?image. }` +
+    `} ORDER BY DESC(?sitelinks) LIMIT 150`;
+  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+  const data = (await fetchJson(url, 10000)) as {
+    results?: {
+      bindings?: Array<{
+        item?: { value?: string };
+        label?: { value?: string };
+        sitelinks?: { value?: string };
+        type?: { value?: string };
+        image?: { value?: string };
+      }>;
+    };
+  } | null;
+  const rows = data?.results?.bindings ?? [];
+  if (rows.length === 0) return [];
+
+  interface Agg {
+    label: string;
+    sitelinks: number;
+    types: Set<string>;
+    image?: string;
+  }
+  const byId = new Map<string, Agg>();
+  for (const b of rows) {
+    const id = b.item?.value?.split("/").pop();
+    const label = b.label?.value;
+    if (!id || !label) continue;
+    let a = byId.get(id);
+    if (!a) {
+      a = { label, sitelinks: Number(b.sitelinks?.value) || 0, types: new Set() };
+      byId.set(id, a);
+    }
+    const ty = b.type?.value?.split("/").pop();
+    if (ty) a.types.add(ty);
+    if (!a.image && b.image?.value) a.image = b.image.value;
+  }
+
+  const destLow = destination.toLowerCase().split(/[,(]/)[0].trim();
+  const out: PlaceActivity[] = [];
+  for (const a of [...byId.values()].sort((x, y) => y.sitelinks - x.sitelinks)) {
+    if ([...a.types].some((t) => WD_BAD_TYPES.has(t))) continue; // type non visitable
+    if (a.label.toLowerCase() === destLow) continue; // la destination elle-même
+    const { category, duration } = classifyTitle(a.label);
+    out.push({
+      name: a.label,
+      description: "",
+      category,
+      duration,
+      bookingUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${a.label}, ${destination}`)}`,
+      provider: "Wikidata",
+      fame: a.sitelinks,
+      wikiTitle: a.label,
+      imageUrl: a.image ? a.image.replace(/^http:/, "https:") + "?width=640" : undefined,
+    });
+    if (out.length >= 25) break;
+  }
+  return out;
+}
+
 // ------------------------------------------------- Source : Wikivoyage (guide open data)
 
 // Wikivoyage (FR) : guide de voyage collaboratif, licence CC-BY-SA (comme
@@ -565,7 +662,7 @@ const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
 // administratives (province, métropole, région…) et événements (festival,
 // championnat…) — ce ne sont pas des lieux à visiter.
 const NOISE_BLOCK =
-  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
+  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|universit[ée]|saint-si[èe]ge|ordre souverain|convention|trait[ée] de\b|\baccord\b|conf[ée]rence|protocole|\bpacte\b|\bm[ée]tro\b|organisation|\bagence\b|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
 
 /**
  * Clé de dédoublonnage : minuscule, sans accents/ponctuation, sans le suffixe
@@ -677,9 +774,10 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const geo = await geocode(destination);
     if (!geo) return [];
 
-    // Toutes les sources en parallèle. Foursquare (à clé) renvoie [] si non
-    // configurée → aucun impact sur le socle gratuit.
-    const [fs, wv, ov, wk] = await Promise.all([
+    // Toutes les sources en parallèle. Wikidata (notoriété) gère les mégapoles ;
+    // Foursquare (à clé) renvoie [] si non configurée → aucun impact.
+    const [wd, fs, wv, ov, wk] = await Promise.all([
+      discoverWikidata(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
       discoverFoursquare(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
       discoverWikivoyage(destination).catch(() => [] as PlaceActivity[]),
       discoverOverpass(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
@@ -689,7 +787,7 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     // Fusion + dédoublonnage (nom normalisé). On rassemble large, on curera après.
     const seen = new Set<string>();
     const merged: PlaceActivity[] = [];
-    for (const p of [...fs, ...wv, ...ov, ...wk]) {
+    for (const p of [...wd, ...fs, ...wv, ...ov, ...wk]) {
       if (!p.name || NOISE_BLOCK.test(p.name)) continue;
       const k = dedupKey(p.name, destination);
       if (!k || seen.has(k)) continue;
