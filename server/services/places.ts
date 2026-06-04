@@ -1,15 +1,18 @@
 /**
- * Découverte d'activités RÉELLES et géolocalisées pour une destination, via des
- * API publiques gratuites et sans clé. Deux sources réelles, en cascade :
- *   1. Overpass (OpenStreetMap) : POI taggés tourisme/monument/parc/sommet, avec
- *      fiche Wikidata (= notables), classés par notoriété (versions linguistiques).
- *   2. Repli RÉEL si Overpass est indisponible : Wikipédia geosearch (lieux réels
- *      autour du point), filtré du bruit (rues, événements, administratif…).
- * Descriptions réelles via Wikipédia. Géocodage via Nominatim.
+ * Découverte d'activités RÉELLES et géolocalisées pour une destination, en
+ * fusionnant plusieurs sources (chacune apporte son plus) :
+ *   1. OpenStreetMap (Overpass) : POI tourisme/monument/parc/sommet avec fiche
+ *      Wikidata (= notables), classés par notoriété (versions linguistiques).
+ *   2. Wikivoyage : listings « Voir / Faire » curated (liens officiels, descriptions).
+ *   3. Wikipédia (geosearch) : lieux réels autour du point, filtrés du bruit.
+ *   4. Foursquare Places (clé gratuite optionnelle) : vrais lieux que les autres
+ *      ratent (spas, luge, parcs) — niveau gratuit = nom/catégorie/site web.
+ * 1 à 3 marchent sans aucune clé ; 4 ne s'active qu'avec sa clé (sinon []).
+ * Géocodage via Nominatim, descriptions via Wikipédia/Wikivoyage.
  *
- * On ne renvoie QUE du factuel : nom réel, description réelle, catégorie réelle,
- * lien réel (site officiel ou article). JAMAIS de note/avis/prix inventés. Liste
- * vide si tout échoue (l'appelant affiche un état vide honnête, pas de faux).
+ * On ne renvoie QUE du factuel : nom, description, catégorie, lien réels, et
+ * prix/note/photo uniquement quand la source les fournit. JAMAIS d'invention.
+ * Liste vide si tout échoue (l'appelant affiche un état vide honnête).
  */
 
 type Cat = "Visite" | "Gastronomie" | "Culture" | "Loisir" | "Nature" | "Shopping" | "Bien-être";
@@ -21,14 +24,14 @@ export interface PlaceActivity {
   duration: string;
   /** Lien réel (site officiel, Google Maps, ou page de réservation), "" si aucun. */
   bookingUrl: string;
-  /** Source réelle : "OpenStreetMap" | "Wikipédia" | "Amadeus" | "Foursquare". */
+  /** Source réelle : "OpenStreetMap" | "Wikivoyage" | "Wikipédia" | "Foursquare". */
   provider: string;
-  /** Prix RÉEL en € (Amadeus), sinon undefined — jamais inventé. */
+  /** Prix RÉEL en €, sinon undefined — jamais inventé. */
   cost?: number;
-  /** Note RÉELLE (Amadeus 0-5 / Foursquare 0-10), sinon undefined. */
+  /** Note RÉELLE, sinon undefined — jamais inventée. */
   rating?: number;
   reviewsCount?: number;
-  /** Photo RÉELLE (Amadeus / Foursquare), sinon undefined. */
+  /** Photo RÉELLE, sinon undefined. */
   imageUrl?: string;
 }
 
@@ -116,27 +119,59 @@ function placeLink(tags: Record<string, string>, name: string, dest: string): st
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${dest}`)}`;
 }
 
+// L'instance publique d'Overpass est souvent saturée (429) ou lente. On essaie
+// plusieurs miroirs en POST, l'un après l'autre, jusqu'à une réponse exploitable.
+const OVERPASS_MIRRORS = [
+  "https://overpass.openstreetmap.fr/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
+
+async function fetchOverpass(query: string): Promise<OverpassEl[]> {
+  const attempt = async (url: string): Promise<OverpassEl[]> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`); // 429/504 → rejet, on prend un autre
+      const data = (await res.json()) as { elements?: OverpassEl[] };
+      const els = data.elements ?? [];
+      if (els.length === 0) throw new Error("empty");
+      return els;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  // Course entre les miroirs : la première réponse exploitable gagne (latence =
+  // miroir le plus rapide ; si tous échouent, ~10s puis []).
+  try {
+    return await Promise.any(OVERPASS_MIRRORS.map(attempt));
+  } catch {
+    return [];
+  }
+}
+
 async function discoverOverpass(
   lat: number,
   lon: number,
   destination: string,
 ): Promise<PlaceActivity[]> {
+  // Requête volontairement LÉGÈRE (≈3 s) : uniquement les POI notables (fiche
+  // Wikidata). Les activités sans Wikidata (téléphériques, trains, spas) sont
+  // désormais couvertes par Wikivoyage et Wikipédia — inutile d'alourdir ici.
   const q =
     `[out:json][timeout:25];(` +
-    // Lieux notables (avec fiche Wikidata) : monuments, musées, parcs, sommets…
-    `nwr["tourism"~"^(attraction|museum|viewpoint|gallery|artwork|theme_park|zoo|aquarium)$"]["wikidata"](around:8000,${lat},${lon});` +
-    `nwr["historic"~"^(monument|castle|ruins|memorial|archaeological_site|fort|city_gate)$"]["wikidata"](around:8000,${lat},${lon});` +
-    `nwr["leisure"~"^(park|garden|nature_reserve)$"]["wikidata"](around:8000,${lat},${lon});` +
-    `nwr["natural"~"^(peak|glacier|volcano|beach|cave_entrance|waterfall)$"]["wikidata"](around:14000,${lat},${lon});` +
-    // Activités & bien-être (avec nom) : téléphériques, trains, spas, parcs aquatiques, théâtres…
-    `nwr["aerialway"="cable_car"]["name"](around:16000,${lat},${lon});` +
-    `nwr["railway"~"^(funicular|narrow_gauge)$"]["name"](around:16000,${lat},${lon});` +
-    `nwr["leisure"~"^(water_park|spa)$"]["name"](around:9000,${lat},${lon});` +
-    `nwr["amenity"~"^(spa|public_bath|theatre|arts_centre)$"]["name"](around:9000,${lat},${lon});` +
-    `);out center tags 200;`;
-  const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
-  const data = (await fetchJson(url, 22000)) as { elements?: OverpassEl[] } | null;
-  const els = data?.elements ?? [];
+    `nwr["tourism"~"^(attraction|museum|viewpoint|gallery|theme_park|zoo|aquarium)$"]["wikidata"](around:8000,${lat},${lon});` +
+    `nwr["historic"~"^(monument|castle|ruins|memorial|archaeological_site|fort)$"]["wikidata"](around:8000,${lat},${lon});` +
+    `nwr["leisure"~"^(park|garden|nature_reserve)$"]["wikidata"](around:9000,${lat},${lon});` +
+    `nwr["natural"~"^(peak|glacier|volcano|beach|waterfall)$"]["wikidata"](around:12000,${lat},${lon});` +
+    `);out center tags 80;`;
+  const els = await fetchOverpass(q);
   if (els.length === 0) return [];
 
   interface Entry {
@@ -281,132 +316,232 @@ async function discoverWikipedia(
   });
 }
 
-// ------------------------------------------------- Source 3 (clé) : Amadeus (Tours & Activities)
+// ------------------------------------------------- Source : Wikivoyage (guide open data)
 
-// Vraies activités réservables (agrégateur Viator/Tiqets) avec prix, photo, note
-// et lien de réservation. Activée seulement si AMADEUS_CLIENT_ID/SECRET sont définis.
-let amadeusTok: { token: string; exp: number } | null = null;
-async function amadeusToken(): Promise<string | null> {
-  const id = process.env.AMADEUS_CLIENT_ID;
-  const secret = process.env.AMADEUS_CLIENT_SECRET;
-  if (!id || !secret) return null;
-  if (amadeusTok && Date.now() < amadeusTok.exp) return amadeusTok.token;
-  const base = process.env.AMADEUS_BASE || "https://test.api.amadeus.com";
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 6000);
-  try {
-    const res = await fetch(`${base}/v1/security/oauth2/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `grant_type=client_credentials&client_id=${encodeURIComponent(id)}&client_secret=${encodeURIComponent(secret)}`,
-      signal: ctrl.signal,
-    });
-    if (!res.ok) return null;
-    const j = (await res.json()) as { access_token?: string; expires_in?: number };
-    if (!j.access_token) return null;
-    amadeusTok = { token: j.access_token, exp: Date.now() + ((j.expires_in ?? 1800) - 60) * 1000 };
-    return j.access_token;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
-  }
+// Wikivoyage (FR) : guide de voyage collaboratif, licence CC-BY-SA (comme
+// Wikipédia → stockable avec attribution). On extrait les listings {{voir}} et
+// {{faire}}, curated par des humains : ils donnent souvent un VRAI lien officiel
+// et une description, là où OSM ne livre qu'un POI brut.
+
+/** Nettoie le wikitexte (liens, templates, balises, gras) en texte simple. */
+function stripWiki(s: string): string {
+  return s
+    .replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, "")
+    .replace(/<ref[^>]*\/>/gi, "")
+    .replace(/<\/?[^>]+>/g, "")
+    .replace(/\[\[(?:[^\]|]*\|)?([^\]|]+)\]\]/g, "$1")
+    .replace(/\[https?:\/\/\S+\s+([^\]]+)\]/g, "$1")
+    .replace(/\{\{[^{}]*\}\}/g, "")
+    .replace(/'''?/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-async function discoverAmadeus(lat: number, lon: number): Promise<PlaceActivity[]> {
-  const token = await amadeusToken();
-  if (!token) return [];
-  const base = process.env.AMADEUS_BASE || "https://test.api.amadeus.com";
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 8000);
-  try {
-    const res = await fetch(`${base}/v1/shopping/activities?latitude=${lat}&longitude=${lon}&radius=20`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: ctrl.signal,
-    });
-    if (!res.ok) return [];
-    const j = (await res.json()) as {
-      data?: Array<{
-        name?: string;
-        shortDescription?: string;
-        rating?: string;
-        pictures?: string[];
-        price?: { amount?: string };
-        bookingLink?: string;
-      }>;
-    };
-    return (j.data ?? [])
-      .filter((a) => a.name)
-      .slice(0, 16)
-      .map((a) => ({
-        name: a.name!,
-        description: (a.shortDescription || "Activité réservable.").replace(/<[^>]+>/g, "").slice(0, 240),
-        category: "Loisir" as Cat,
-        duration: "demi-journée",
-        bookingUrl: a.bookingLink || "",
-        provider: "Amadeus",
-        cost: a.price?.amount ? Math.round(Number(a.price.amount)) || undefined : undefined,
-        rating: a.rating ? Number(a.rating) || undefined : undefined,
-        imageUrl: Array.isArray(a.pictures) && a.pictures[0] ? a.pictures[0] : undefined,
-      }));
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(t);
+/** Extrait le contenu interne de chaque template {{name …}} (comptage d'accolades). */
+function wvBlocks(wikitext: string, name: string): string[] {
+  const blocks: string[] = [];
+  const re = new RegExp(`\\{\\{\\s*${name}\\b`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(wikitext))) {
+    let i = m.index + 2;
+    let depth = 1;
+    const start = i;
+    while (i < wikitext.length && depth > 0) {
+      const two = wikitext.slice(i, i + 2);
+      if (two === "{{") {
+        i += 2;
+        depth++;
+      } else if (two === "}}") {
+        i += 2;
+        depth--;
+      } else {
+        i++;
+      }
+    }
+    blocks.push(wikitext.slice(start, i - 2));
+    re.lastIndex = i;
   }
+  return blocks;
 }
 
-// ------------------------------------------------- Source 4 (clé) : Foursquare Places
+/** Parse les paramètres |clé=valeur d'un bloc (en respectant {{}} et [[]] imbriqués). */
+function wvFields(block: string): Record<string, string> {
+  const parts: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (let i = 0; i < block.length; i++) {
+    const two = block.slice(i, i + 2);
+    if (two === "{{" || two === "[[") {
+      depth++;
+      cur += two;
+      i++;
+    } else if (two === "}}" || two === "]]") {
+      if (depth > 0) depth--;
+      cur += two;
+      i++;
+    } else if (block[i] === "|" && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else {
+      cur += block[i];
+    }
+  }
+  parts.push(cur);
+  const out: Record<string, string> = {};
+  for (const p of parts) {
+    const eq = p.indexOf("=");
+    if (eq > 0) out[p.slice(0, eq).trim().toLowerCase()] = p.slice(eq + 1).trim();
+  }
+  return out;
+}
 
+async function wvWikitext(title: string): Promise<string | null> {
+  const url = `https://fr.wikivoyage.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&titles=${encodeURIComponent(
+    title,
+  )}&format=json`;
+  const data = (await fetchJson(url)) as {
+    query?: { pages?: Record<string, { revisions?: Array<{ slots?: { main?: { "*"?: string } } }> }> };
+  } | null;
+  const page = Object.values(data?.query?.pages ?? {})[0];
+  return page?.revisions?.[0]?.slots?.main?.["*"] ?? null;
+}
+
+// Listings « pratiques » à écarter (offices de tourisme, admin, transport, santé…) :
+// ce ne sont pas des activités à planifier.
+const WV_BLOCK =
+  /office de tourisme|information[s]? touristique|syndicat d'initiative|maison du tourisme|pr[ée]fecture|sous-pr[ée]fecture|\bmairie\b|h[ôo]tel de ville|consulat|ambassade|\bgare\b|gare routi[èe]re|a[ée]roport|\bparking\b|station-service|station service|h[ôo]pital|clinique|pharmacie|\bla poste\b|bureau de poste|commissariat|gendarmerie|\bbanque\b|distributeur|bureau de change|laverie|location de v[ée]lo|\btaxi\b|supermarch[ée]|\blyc[ée]e\b|\bcoll[èe]ge\b|universit[ée]|palais de justice|\btribunal\b/i;
+
+async function discoverWikivoyage(destination: string): Promise<PlaceActivity[]> {
+  const q = destination.split(/[,(]/)[0].trim();
+  // Essai direct par titre (gère les redirections) ; sinon, recherche plein texte.
+  let wikitext = await wvWikitext(q);
+  if (!wikitext) {
+    const sUrl = `https://fr.wikivoyage.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+      q,
+    )}&srlimit=1&format=json`;
+    const sd = (await fetchJson(sUrl)) as { query?: { search?: Array<{ title: string }> } } | null;
+    const title = sd?.query?.search?.[0]?.title;
+    if (title) wikitext = await wvWikitext(title);
+  }
+  if (!wikitext) return [];
+  const wt = wikitext;
+
+  const out: PlaceActivity[] = [];
+  const seen = new Set<string>();
+  const collect = (tpl: string, isActivity: boolean) => {
+    for (const block of wvBlocks(wt, tpl)) {
+      const f = wvFields(block);
+      const name = stripWiki(f["nom"] || "");
+      const k = name.toLowerCase();
+      if (name.length < 2 || seen.has(k) || WV_BLOCK.test(k)) continue;
+      seen.add(k);
+      const guess = classifyTitle(name);
+      // {{faire}} = activité → Loisir par défaut si le nom ne dit rien de précis.
+      const generic = guess.category === "Visite";
+      const url = (f["url"] || "").trim();
+      out.push({
+        name,
+        description: (stripWiki(f["description"] || "") || stripWiki(f["adresse"] || "") || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
+        category: isActivity && generic ? "Loisir" : guess.category,
+        duration: isActivity && generic ? "demi-journée" : guess.duration,
+        bookingUrl: /^https?:\/\//i.test(url)
+          ? url.split(/\s/)[0]
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${destination}`)}`,
+        provider: "Wikivoyage",
+      });
+    }
+  };
+  collect("voir", false);
+  collect("faire", true);
+  return out.slice(0, 18);
+}
+
+// ------------------------------------------------- Source (clé optionnelle) : Foursquare Places
+
+// Catégorie Foursquare (nom lisible) → notre taxonomie. Large, pour bien capter
+// les lieux que OSM/Wikipédia ratent (spas, luge, parcs, téléphériques…).
 function fsqCategory(cats: Array<{ name?: string }> | undefined): Cat {
   const n = (cats?.[0]?.name || "").toLowerCase();
-  if (/spa|bath|sauna|wellness|massage|hammam/.test(n)) return "Bien-être";
-  if (/museum|gallery|art|theater|theatre|historic|monument|church|temple|landmark/.test(n)) return "Culture";
-  if (/restaurant|food|café|cafe|bar|bistro|brasserie|winery|brewery|market/.test(n)) return "Gastronomie";
-  if (/park|garden|mountain|lake|beach|trail|scenic|nature|forest|waterfall/.test(n)) return "Nature";
-  if (/amusement|aquarium|zoo|tour|cable|funicular|sports|ski|climb|water park|entertainment/.test(n))
+  if (/spa|bath|sauna|wellness|massage|hammam|thermal|therme|onsen/.test(n)) return "Bien-être";
+  if (
+    /museum|gallery|\bart\b|theater|theatre|historic|monument|church|temple|cathedral|mosque|synagogue|landmark|memorial|castle|palace|heritage|cultural|library|exhibit|opera/.test(n)
+  )
+    return "Culture";
+  if (
+    /park|garden|mountain|lake|beach|trail|scenic|nature|forest|waterfall|\bhill\b|valley|river|island|\bcave\b|viewpoint|lookout|botanical|reserve|glacier/.test(n)
+  )
+    return "Nature";
+  if (
+    /amusement|aquarium|\bzoo\b|cable car|funicular|gondola|cog railway|\bski\b|climb|water park|theme|luge|toboggan|playground|recreation|golf|bowling|arcade|stadium|arena|adventure|rafting|kayak|\bboat\b|cruise|entertainment/.test(
+      n,
+    )
+  )
     return "Loisir";
+  if (/restaurant|food|café|cafe|\bbar\b|bistro|brasserie|winery|brewery|eatery|diner/.test(n))
+    return "Gastronomie";
   if (/shop|mall|store|boutique|market/.test(n)) return "Shopping";
   return "Visite";
 }
 
-async function discoverFoursquare(lat: number, lon: number): Promise<PlaceActivity[]> {
+// API Foursquare Places (v2025) : l'ancien /v3 a été déprécié le 15/05/2026.
+// Endpoint places-api.foursquare.com, auth Bearer + en-tête de version daté.
+// Niveau GRATUIT ("Places Pro") : nom, catégories, site web — note/photo sont
+// des champs "Premium" payants, qu'on ne demande donc PAS (zéro donnée inventée).
+// Foursquare apporte de VRAIS lieux absents d'OSM/Wikipédia (spas, luge, parcs).
+// On écarte le bruit (commerces, restos, services non touristiques).
+async function discoverFoursquare(
+  lat: number,
+  lon: number,
+  destination: string,
+): Promise<PlaceActivity[]> {
   const apiKey = process.env.FOURSQUARE_API_KEY;
   if (!apiKey) return [];
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 7000);
   try {
+    const fields = "fsq_place_id,name,categories,website,location";
     const url =
-      `https://api.foursquare.com/v3/places/search?ll=${lat},${lon}&radius=6000&limit=20&sort=POPULARITY` +
-      `&fields=name,categories,rating,stats,photos,website,location`;
-    const res = await fetch(url, { headers: { Authorization: apiKey, Accept: "application/json" }, signal: ctrl.signal });
+      `https://places-api.foursquare.com/places/search?ll=${lat},${lon}&radius=8000&limit=50` +
+      `&fields=${encodeURIComponent(fields)}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "X-Places-Api-Version": "2025-06-17",
+        Accept: "application/json",
+      },
+      signal: ctrl.signal,
+    });
     if (!res.ok) return [];
     const j = (await res.json()) as {
       results?: Array<{
         name?: string;
         categories?: Array<{ name?: string }>;
-        rating?: number;
-        stats?: { total_ratings?: number };
-        photos?: Array<{ prefix?: string; suffix?: string }>;
         website?: string;
+        location?: { formatted_address?: string };
       }>;
     };
-    return (j.results ?? [])
-      .filter((p) => p.name)
-      .map((p) => {
-        const photo = p.photos?.[0];
-        return {
-          name: p.name!,
-          description: (p.categories?.[0]?.name || "Lieu populaire.").slice(0, 240),
-          category: fsqCategory(p.categories),
-          duration: "1h30",
-          bookingUrl: p.website || "",
-          provider: "Foursquare",
-          rating: typeof p.rating === "number" ? p.rating : undefined, // 0-10
-          reviewsCount: p.stats?.total_ratings,
-          imageUrl: photo?.prefix && photo?.suffix ? `${photo.prefix}original${photo.suffix}` : undefined,
-        };
+    const out: PlaceActivity[] = [];
+    for (const p of j.results ?? []) {
+      if (!p.name) continue;
+      const category = fsqCategory(p.categories);
+      // On ne garde que le touristique : on écarte "Visite" générique (commerces,
+      // services), la restauration et le shopping (bruit pour un planning).
+      if (category === "Visite" || category === "Gastronomie" || category === "Shopping") continue;
+      const catName = p.categories?.[0]?.name;
+      out.push({
+        name: p.name,
+        description: (catName || p.location?.formatted_address || `Lieu réel à ${destination}.`).slice(0, 240),
+        category,
+        duration: category === "Bien-être" ? "demi-journée" : "1h30",
+        bookingUrl:
+          p.website && /^https?:\/\//i.test(p.website)
+            ? p.website
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${p.name}, ${destination}`)}`,
+        provider: "Foursquare",
       });
+    }
+    return out;
   } catch {
     return [];
   } finally {
@@ -419,12 +554,23 @@ async function discoverFoursquare(lat: number, lon: number): Promise<PlaceActivi
 const cache = new Map<string, { at: number; places: PlaceActivity[] }>();
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
 
+/** Clé de dédoublonnage : minuscule, sans accents ni ponctuation (« L'Aiguille-du-Midi » == « aiguille du midi »). */
+function dedupKey(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 /**
  * Agrège plusieurs sources RÉELLES en parallèle puis fusionne :
- *   - Amadeus (activités réservables + prix + photo) et Foursquare (commerces +
- *     photos), si leurs clés sont configurées — ils passent en premier ;
- *   - OpenStreetMap (Overpass) et Wikipédia (toujours, sans clé) complètent.
- * Dédoublonné par nom, on garde le tout (les catégories servent au filtre UI).
+ *   - Wikivoyage (listings curated + liens officiels), OpenStreetMap (Overpass,
+ *     POI notables) et Wikipédia : gratuits, sans clé, toujours actifs ;
+ *   - Foursquare (lieux commerciaux) : seulement si sa clé est configurée.
+ * Dédoublonné par nom normalisé (sans accents), on garde le tout (les catégories
+ * servent au filtre UI).
  */
 export async function fetchPlaceActivities(destination: string): Promise<PlaceActivity[]> {
   try {
@@ -435,21 +581,24 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const geo = await geocode(destination);
     if (!geo) return [];
 
-    // Toutes les sources disponibles, en parallèle. Les sources à clé (Amadeus,
-    // Foursquare) renvoient [] si non configurées → aucun impact.
-    const [am, fs, ov, wk] = await Promise.all([
-      discoverAmadeus(geo.lat, geo.lon).catch(() => [] as PlaceActivity[]),
-      discoverFoursquare(geo.lat, geo.lon).catch(() => [] as PlaceActivity[]),
+    // Toutes les sources en parallèle. Foursquare (à clé) renvoie [] si non
+    // configurée → aucun impact sur le socle gratuit.
+    const [fs, wv, ov, wk] = await Promise.all([
+      discoverFoursquare(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
+      discoverWikivoyage(destination).catch(() => [] as PlaceActivity[]),
       discoverOverpass(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
       discoverWikipedia(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
     ]);
 
-    // Amadeus & Foursquare d'abord (plus riches : prix/photos), puis OSM/Wikipédia.
+    // Ordre de priorité (le 1er garde la main en cas de doublon) : Foursquare et
+    // Wikivoyage (liens officiels) d'abord, puis OSM (classé par notoriété), enfin
+    // le repli Wikipédia.
     const seen = new Set<string>();
     const places: PlaceActivity[] = [];
-    for (const p of [...am, ...fs, ...ov, ...wk]) {
-      const k = p.name.trim().toLowerCase();
-      if (!p.name || seen.has(k)) continue;
+    for (const p of [...fs, ...wv, ...ov, ...wk]) {
+      if (!p.name) continue;
+      const k = dedupKey(p.name);
+      if (!k || seen.has(k)) continue;
       seen.add(k);
       places.push(p);
       if (places.length >= 28) break;

@@ -442,9 +442,9 @@ async function buildOfflineItinerary(
           id: `act-real-${cleanKey}-${index}`,
           name: act.name,
           description: act.description,
-          cost: act.cost ?? 0, // prix RÉEL (Amadeus) sinon 0, jamais inventé
+          cost: act.cost ?? 0, // prix RÉEL si fourni, sinon 0, jamais inventé
           category: act.category,
-          proposedBy: act.provider, // "Amadeus" | "Foursquare" | "OpenStreetMap" | "Wikipédia"
+          proposedBy: act.provider, // "OpenStreetMap" | "Wikivoyage" | "Wikipédia" | "Foursquare"
           source: undefined as string | undefined,
           rating: act.rating as number | undefined, // note RÉELLE ou rien
           reviewsCount: act.reviewsCount as number | undefined,

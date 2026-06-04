@@ -339,7 +339,7 @@ export default function ItineraryTab() {
 
                   return (
                     <div key={act.id} className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2 hover:border-indigo-500/30 transition-all group">
-                      {/* Photo réelle (Amadeus / Foursquare) si disponible */}
+                      {/* Photo réelle si la source en fournit une */}
                       {act.imageUrl && (
                         <img
                           src={act.imageUrl}
@@ -362,7 +362,7 @@ export default function ItineraryTab() {
                                 {CATEGORY_EMOJI[act.category] ?? "📍"} {act.category}
                               </span>
                             )}
-                            {/* Note RÉELLE (Amadeus /5, Foursquare /10) */}
+                            {/* Note RÉELLE si la source la fournit (jamais inventée) */}
                             {act.rating != null && (
                               <span className="bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap">
                                 ⭐ {act.rating}
