@@ -33,9 +33,14 @@ export interface PlaceActivity {
   reviewsCount?: number;
   /** Photo RÉELLE, sinon undefined. */
   imageUrl?: string;
+  /** Indice interne : titre d'article Wikipédia (FR) pour retrouver photo/intro. */
+  wikiTitle?: string;
+  /** Notoriété interne : nombre de versions linguistiques Wikipédia (classement). */
+  fame?: number;
 }
 
-const UA = "Co-Tripper/1.0 (planificateur de voyage en groupe)";
+// Wikimedia exige un User-Agent identifiable avec contact (réduit le throttling).
+const UA = "Co-Tripper/1.0 (https://co-tripper.example; contact@co-tripper.example)";
 
 async function fetchJson(url: string, ms = 6000): Promise<unknown | null> {
   const ctrl = new AbortController();
@@ -253,6 +258,7 @@ async function discoverOverpass(
       duration,
       bookingUrl: placeLink(e.tags, e.name, destination),
       provider: "OpenStreetMap",
+      wikiTitle: e.wiki,
     };
   });
 }
@@ -284,7 +290,7 @@ async function discoverWikipedia(
   lon: number,
   destination: string,
 ): Promise<PlaceActivity[]> {
-  const geoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=45&format=json`;
+  const geoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=90&format=json`;
   const geoData = (await fetchJson(geoUrl)) as {
     query?: { geosearch?: Array<{ title: string }> };
   } | null;
@@ -298,7 +304,7 @@ async function discoverWikipedia(
   const titles = results
     .map((r) => r.title)
     .filter((t) => !WIKI_BLOCK.test(t.toLowerCase()) && !isTown(t.toLowerCase()))
-    .slice(0, 16);
+    .slice(0, 28);
   if (titles.length === 0) return [];
 
   const extracts = await fetchExtracts(titles);
@@ -449,6 +455,7 @@ async function discoverWikivoyage(destination: string): Promise<PlaceActivity[]>
           ? url.split(/\s/)[0]
           : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${destination}`)}`,
         provider: "Wikivoyage",
+        wikiTitle: stripWiki(f["wikipédia"] || f["wikipedia"] || "") || undefined,
       });
     }
   };
@@ -554,14 +561,103 @@ async function discoverFoursquare(
 const cache = new Map<string, { at: number; places: PlaceActivity[] }>();
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
 
-/** Clé de dédoublonnage : minuscule, sans accents ni ponctuation (« L'Aiguille-du-Midi » == « aiguille du midi »). */
-function dedupKey(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+// Entités à BANNIR du résultat final (notoriété trompeuse) : divisions
+// administratives (province, métropole, région…) et événements (festival,
+// championnat…) — ce ne sont pas des lieux à visiter.
+const NOISE_BLOCK =
+  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
+
+/**
+ * Clé de dédoublonnage : minuscule, sans accents/ponctuation, sans le suffixe
+ * désambiguïsant lié à la destination (« Cathédrale Saint-Pierre d'Annecy » ==
+ * « Cathédrale Saint-Pierre », « Le Pâquier (Annecy) » == « Le Pâquier »).
+ */
+function dedupKey(name: string, dest: string): string {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const d = norm(dest);
+  let k = norm(name);
+  if (d) k = k.replace(new RegExp(`(?:\\s(?:de|d|du|des|la|le|l))?\\s${d}$`), "").trim();
+  return k;
+}
+
+interface RawWikiResponse {
+  query?: {
+    pages?: Record<
+      string,
+      { title?: string; extract?: string; thumbnail?: { source?: string }; langlinks?: unknown[] }
+    >;
+    normalized?: Array<{ from: string; to: string }>;
+    redirects?: Array<{ from: string; to: string }>;
+  };
+}
+
+/**
+ * Enrichit un lot de lieux (≤20) via l'API Wikipédia (FR), en un appel :
+ *   - photo libre (Wikimedia Commons) → sert de filtre qualité ;
+ *   - intro descriptive (remplace les descriptions fades) ;
+ *   - `fame` = nombre de versions linguistiques (langlinks) = notoriété réelle,
+ *     pour classer (le Colisée a ~150 langues, une œuvre obscure ~3).
+ * `exlimit` plafonne les extraits à 20/req. 1 réessai si throttle/réseau.
+ */
+async function enrichBatch(batch: PlaceActivity[]): Promise<void> {
+  const titles = batch.map((p) => p.wikiTitle || p.name).join("|");
+  const url =
+    `https://fr.wikipedia.org/w/api.php?action=query&format=json&redirects=1` +
+    `&prop=extracts|pageimages|langlinks&exintro&explaintext&exsentences=2&exlimit=20&lllimit=500` +
+    `&piprop=thumbnail&pithumbsize=640&pilimit=50&titles=${encodeURIComponent(titles)}`;
+  let data = (await fetchJson(url, 10000)) as RawWikiResponse | null;
+  if (!data?.query?.pages) {
+    await new Promise((r) => setTimeout(r, 700)); // petit répit si throttle/réseau
+    data = (await fetchJson(url, 10000)) as RawWikiResponse | null;
+  }
+  const q = data?.query;
+  if (!q?.pages) return;
+  const imgByTitle: Record<string, string> = {};
+  const extByTitle: Record<string, string> = {};
+  const fameByTitle: Record<string, number> = {};
+  for (const pg of Object.values(q.pages)) {
+    const t = (pg.title ?? "").toLowerCase();
+    if (!t) continue;
+    if (pg.thumbnail?.source) imgByTitle[t] = pg.thumbnail.source;
+    if (pg.extract) extByTitle[t] = pg.extract;
+    if (pg.langlinks) fameByTitle[t] = pg.langlinks.length;
+  }
+  // Suit les renvois (titre demandé → titre résolu) pour relier la réponse.
+  const alias: Record<string, string> = {};
+  for (const n of q.normalized ?? []) alias[n.from.toLowerCase()] = n.to.toLowerCase();
+  for (const r of q.redirects ?? []) alias[r.from.toLowerCase()] = r.to.toLowerCase();
+  const resolve = (name: string): string => {
+    let t = name.toLowerCase();
+    for (let h = 0; h < 3 && alias[t]; h++) t = alias[t];
+    return t;
+  };
+  for (const p of batch) {
+    const want = (p.wikiTitle || p.name).toLowerCase();
+    const t = resolve(p.wikiTitle || p.name);
+    const img = imgByTitle[t] || imgByTitle[want];
+    if (img && !p.imageUrl) p.imageUrl = img;
+    const fame = fameByTitle[t] ?? fameByTitle[want];
+    if (fame != null) p.fame = Math.max(p.fame ?? 0, fame);
+    const ext = extByTitle[t] || extByTitle[want];
+    // Ne remplace que les descriptions fades (défaut générique), garde le curated.
+    if (ext && (!p.description || /^Lieu réel à/.test(p.description))) {
+      p.description = ext.slice(0, 240);
+    }
+  }
+}
+
+/** Enrichit tous les lieux par lots de 20, EN PARALLÈLE (latence = 1 lot). */
+async function enrichWikiMedia(places: PlaceActivity[]): Promise<void> {
+  const batches: PlaceActivity[][] = [];
+  for (let i = 0; i < places.length; i += 20) batches.push(places.slice(i, i + 20));
+  await Promise.all(batches.map((b) => enrichBatch(b).catch(() => undefined)));
 }
 
 /**
@@ -590,22 +686,55 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
       discoverWikipedia(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
     ]);
 
-    // Ordre de priorité (le 1er garde la main en cas de doublon) : Foursquare et
-    // Wikivoyage (liens officiels) d'abord, puis OSM (classé par notoriété), enfin
-    // le repli Wikipédia.
+    // Fusion + dédoublonnage (nom normalisé). On rassemble large, on curera après.
     const seen = new Set<string>();
-    const places: PlaceActivity[] = [];
+    const merged: PlaceActivity[] = [];
     for (const p of [...fs, ...wv, ...ov, ...wk]) {
-      if (!p.name) continue;
-      const k = dedupKey(p.name);
+      if (!p.name || NOISE_BLOCK.test(p.name)) continue;
+      const k = dedupKey(p.name, destination);
       if (!k || seen.has(k)) continue;
       seen.add(k);
-      places.push(p);
-      if (places.length >= 28) break;
+      merged.push(p);
+      if (merged.length >= 55) break;
     }
 
-    if (places.length > 0) cache.set(key, { at: Date.now(), places });
-    return places;
+    // Enrichit avec photos + intros libres (Wikimedia). La photo devient le signal
+    // de qualité : un lieu iconique en a une, le remplissage fade non.
+    await enrichWikiMedia(merged);
+
+    // CURATION « peps ou rien » : on ne garde que ce qui fait envie. Critère
+    // d'admission : une VRAIE photo, OU un VRAI lien officiel (≠ recherche Maps),
+    // OU une vraie notoriété (présent dans ≥8 Wikipédia). Le reste = remplissage
+    // fade, écarté. Mieux vaut peu de pépites que des suggestions décevantes.
+    const officialLink = (p: PlaceActivity) =>
+      !!p.bookingUrl && !/google\.[a-z.]+\/maps/i.test(p.bookingUrl);
+    const admissible = (p: PlaceActivity) =>
+      !!p.imageUrl || officialLink(p) || (p.fame ?? 0) >= 8;
+
+    // Classement dominé par la NOTORIÉTÉ (langlinks) : le Colisée passe devant une
+    // œuvre obscure. Bonus photo (peps visuel) et lien officiel (expérience réelle).
+    const score = (p: PlaceActivity) =>
+      (p.fame ?? 0) + (p.imageUrl ? 40 : 0) + (officialLink(p) ? 20 : 0);
+
+    const ranked = merged.filter(admissible).sort((a, b) => score(b) - score(a));
+
+    // Si on a assez de lieux AVEC photo, on ne garde QUE ceux-là (peps visuel,
+    // zéro carte fade). Sinon on complète avec les expériences à lien officiel.
+    const withPhoto = ranked.filter((p) => p.imageUrl);
+    const pool = withPhoto.length >= 5 ? withPhoto : ranked;
+
+    // Variété (max 4 / catégorie) + plafond à 12 pépites.
+    const perCat: Record<string, number> = {};
+    const curated: PlaceActivity[] = [];
+    for (const p of pool) {
+      perCat[p.category] = (perCat[p.category] ?? 0) + 1;
+      if (perCat[p.category] > 4) continue;
+      curated.push(p);
+      if (curated.length >= 12) break;
+    }
+
+    if (curated.length > 0) cache.set(key, { at: Date.now(), places: curated });
+    return curated;
   } catch {
     return [];
   }
