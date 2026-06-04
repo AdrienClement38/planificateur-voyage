@@ -442,14 +442,15 @@ async function buildOfflineItinerary(
           id: `act-real-${cleanKey}-${index}`,
           name: act.name,
           description: act.description,
-          cost: 0, // pas de prix inventé (à renseigner par l'utilisateur si besoin)
+          cost: act.cost ?? 0, // prix RÉEL (Amadeus) sinon 0, jamais inventé
           category: act.category,
-          proposedBy: "OpenStreetMap · Wikipédia",
+          proposedBy: act.provider, // "Amadeus" | "Foursquare" | "OpenStreetMap" | "Wikipédia"
           source: undefined as string | undefined,
-          rating: undefined as number | undefined,
-          reviewsCount: undefined as number | undefined,
+          rating: act.rating as number | undefined, // note RÉELLE ou rien
+          reviewsCount: act.reviewsCount as number | undefined,
           duration: act.duration,
           bookingUrl: act.bookingUrl,
+          imageUrl: act.imageUrl as string | undefined,
           votes: [] as number[],
         }))
       : // 2) Repli (rare) : catalogue hors-ligne, quand les API sont injoignables.

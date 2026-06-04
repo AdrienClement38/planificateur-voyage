@@ -153,6 +153,7 @@ const activityInput = z.object({
   reviewsCount: z.number().int().optional(),
   duration: z.string().optional(),
   bookingUrl: z.string().optional(),
+  imageUrl: z.string().optional(),
 });
 
 router.post("/:id/activities", requireMembership, async (req, res) => {

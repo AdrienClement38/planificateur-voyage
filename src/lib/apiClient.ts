@@ -29,6 +29,7 @@ export interface ActivityInput {
   reviewsCount?: number;
   duration?: string;
   bookingUrl?: string;
+  imageUrl?: string;
 }
 
 /** Erreur d'API portant le code HTTP (0 = réseau injoignable). */

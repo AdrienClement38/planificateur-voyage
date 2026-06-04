@@ -339,6 +339,18 @@ export default function ItineraryTab() {
 
                   return (
                     <div key={act.id} className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2 hover:border-indigo-500/30 transition-all group">
+                      {/* Photo réelle (Amadeus / Foursquare) si disponible */}
+                      {act.imageUrl && (
+                        <img
+                          src={act.imageUrl}
+                          alt={act.name}
+                          loading="lazy"
+                          className="w-full h-28 object-cover rounded-xl border border-white/10"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      )}
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-1.5">
@@ -348,6 +360,14 @@ export default function ItineraryTab() {
                             {act.category && (
                               <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap uppercase tracking-wide">
                                 {CATEGORY_EMOJI[act.category] ?? "📍"} {act.category}
+                              </span>
+                            )}
+                            {/* Note RÉELLE (Amadeus /5, Foursquare /10) */}
+                            {act.rating != null && (
+                              <span className="bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap">
+                                ⭐ {act.rating}
+                                {act.proposedBy === "Foursquare" ? "/10" : "/5"}
+                                {act.reviewsCount ? ` (${act.reviewsCount})` : ""}
                               </span>
                             )}
                           </div>

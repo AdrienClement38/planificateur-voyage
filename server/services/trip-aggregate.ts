@@ -129,6 +129,7 @@ export async function loadTripAggregate(tripId: string): Promise<Trip | null> {
       reviewsCount: a.reviewsCount ?? undefined,
       duration: a.duration ?? undefined,
       bookingUrl: a.bookingUrl ?? undefined,
+      imageUrl: a.imageUrl ?? undefined,
     })),
     itinerary: dayRows.map((d) => ({
       day: d.day,

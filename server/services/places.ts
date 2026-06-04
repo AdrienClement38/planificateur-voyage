@@ -19,8 +19,17 @@ export interface PlaceActivity {
   description: string;
   category: Cat;
   duration: string;
-  /** Lien réel (site officiel ou article Wikipédia), "" si aucun. */
+  /** Lien réel (site officiel, Google Maps, ou page de réservation), "" si aucun. */
   bookingUrl: string;
+  /** Source réelle : "OpenStreetMap" | "Wikipédia" | "Amadeus" | "Foursquare". */
+  provider: string;
+  /** Prix RÉEL en € (Amadeus), sinon undefined — jamais inventé. */
+  cost?: number;
+  /** Note RÉELLE (Amadeus 0-5 / Foursquare 0-10), sinon undefined. */
+  rating?: number;
+  reviewsCount?: number;
+  /** Photo RÉELLE (Amadeus / Foursquare), sinon undefined. */
+  imageUrl?: string;
 }
 
 const UA = "Co-Tripper/1.0 (planificateur de voyage en groupe)";
@@ -208,6 +217,7 @@ async function discoverOverpass(
       category,
       duration,
       bookingUrl: placeLink(e.tags, e.name, destination),
+      provider: "OpenStreetMap",
     };
   });
 }
@@ -266,8 +276,142 @@ async function discoverWikipedia(
       category,
       duration,
       bookingUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${title}, ${destination}`)}`,
+      provider: "Wikipédia",
     };
   });
+}
+
+// ------------------------------------------------- Source 3 (clé) : Amadeus (Tours & Activities)
+
+// Vraies activités réservables (agrégateur Viator/Tiqets) avec prix, photo, note
+// et lien de réservation. Activée seulement si AMADEUS_CLIENT_ID/SECRET sont définis.
+let amadeusTok: { token: string; exp: number } | null = null;
+async function amadeusToken(): Promise<string | null> {
+  const id = process.env.AMADEUS_CLIENT_ID;
+  const secret = process.env.AMADEUS_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  if (amadeusTok && Date.now() < amadeusTok.exp) return amadeusTok.token;
+  const base = process.env.AMADEUS_BASE || "https://test.api.amadeus.com";
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch(`${base}/v1/security/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `grant_type=client_credentials&client_id=${encodeURIComponent(id)}&client_secret=${encodeURIComponent(secret)}`,
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!j.access_token) return null;
+    amadeusTok = { token: j.access_token, exp: Date.now() + ((j.expires_in ?? 1800) - 60) * 1000 };
+    return j.access_token;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function discoverAmadeus(lat: number, lon: number): Promise<PlaceActivity[]> {
+  const token = await amadeusToken();
+  if (!token) return [];
+  const base = process.env.AMADEUS_BASE || "https://test.api.amadeus.com";
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`${base}/v1/shopping/activities?latitude=${lat}&longitude=${lon}&radius=20`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return [];
+    const j = (await res.json()) as {
+      data?: Array<{
+        name?: string;
+        shortDescription?: string;
+        rating?: string;
+        pictures?: string[];
+        price?: { amount?: string };
+        bookingLink?: string;
+      }>;
+    };
+    return (j.data ?? [])
+      .filter((a) => a.name)
+      .slice(0, 16)
+      .map((a) => ({
+        name: a.name!,
+        description: (a.shortDescription || "Activité réservable.").replace(/<[^>]+>/g, "").slice(0, 240),
+        category: "Loisir" as Cat,
+        duration: "demi-journée",
+        bookingUrl: a.bookingLink || "",
+        provider: "Amadeus",
+        cost: a.price?.amount ? Math.round(Number(a.price.amount)) || undefined : undefined,
+        rating: a.rating ? Number(a.rating) || undefined : undefined,
+        imageUrl: Array.isArray(a.pictures) && a.pictures[0] ? a.pictures[0] : undefined,
+      }));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// ------------------------------------------------- Source 4 (clé) : Foursquare Places
+
+function fsqCategory(cats: Array<{ name?: string }> | undefined): Cat {
+  const n = (cats?.[0]?.name || "").toLowerCase();
+  if (/spa|bath|sauna|wellness|massage|hammam/.test(n)) return "Bien-être";
+  if (/museum|gallery|art|theater|theatre|historic|monument|church|temple|landmark/.test(n)) return "Culture";
+  if (/restaurant|food|café|cafe|bar|bistro|brasserie|winery|brewery|market/.test(n)) return "Gastronomie";
+  if (/park|garden|mountain|lake|beach|trail|scenic|nature|forest|waterfall/.test(n)) return "Nature";
+  if (/amusement|aquarium|zoo|tour|cable|funicular|sports|ski|climb|water park|entertainment/.test(n))
+    return "Loisir";
+  if (/shop|mall|store|boutique|market/.test(n)) return "Shopping";
+  return "Visite";
+}
+
+async function discoverFoursquare(lat: number, lon: number): Promise<PlaceActivity[]> {
+  const apiKey = process.env.FOURSQUARE_API_KEY;
+  if (!apiKey) return [];
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 7000);
+  try {
+    const url =
+      `https://api.foursquare.com/v3/places/search?ll=${lat},${lon}&radius=6000&limit=20&sort=POPULARITY` +
+      `&fields=name,categories,rating,stats,photos,website,location`;
+    const res = await fetch(url, { headers: { Authorization: apiKey, Accept: "application/json" }, signal: ctrl.signal });
+    if (!res.ok) return [];
+    const j = (await res.json()) as {
+      results?: Array<{
+        name?: string;
+        categories?: Array<{ name?: string }>;
+        rating?: number;
+        stats?: { total_ratings?: number };
+        photos?: Array<{ prefix?: string; suffix?: string }>;
+        website?: string;
+      }>;
+    };
+    return (j.results ?? [])
+      .filter((p) => p.name)
+      .map((p) => {
+        const photo = p.photos?.[0];
+        return {
+          name: p.name!,
+          description: (p.categories?.[0]?.name || "Lieu populaire.").slice(0, 240),
+          category: fsqCategory(p.categories),
+          duration: "1h30",
+          bookingUrl: p.website || "",
+          provider: "Foursquare",
+          rating: typeof p.rating === "number" ? p.rating : undefined, // 0-10
+          reviewsCount: p.stats?.total_ratings,
+          imageUrl: photo?.prefix && photo?.suffix ? `${photo.prefix}original${photo.suffix}` : undefined,
+        };
+      });
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 // ------------------------------------------------------------------- Point d'entrée
@@ -275,7 +419,13 @@ async function discoverWikipedia(
 const cache = new Map<string, { at: number; places: PlaceActivity[] }>();
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
 
-/** Renvoie de vraies activités géolocalisées et notables pour la destination. */
+/**
+ * Agrège plusieurs sources RÉELLES en parallèle puis fusionne :
+ *   - Amadeus (activités réservables + prix + photo) et Foursquare (commerces +
+ *     photos), si leurs clés sont configurées — ils passent en premier ;
+ *   - OpenStreetMap (Overpass) et Wikipédia (toujours, sans clé) complètent.
+ * Dédoublonné par nom, on garde le tout (les catégories servent au filtre UI).
+ */
 export async function fetchPlaceActivities(destination: string): Promise<PlaceActivity[]> {
   try {
     const key = destination.trim().toLowerCase();
@@ -285,22 +435,24 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const geo = await geocode(destination);
     if (!geo) return [];
 
-    // Deux sources RÉELLES en parallèle, puis fusion : Overpass (propre, taggé)
-    // d'abord, Wikipédia (fiable, complète) ensuite. Si Overpass timeout (villes
-    // denses), Wikipédia assure quand même un résultat — ça marche partout.
-    const [ov, wk] = await Promise.all([
+    // Toutes les sources disponibles, en parallèle. Les sources à clé (Amadeus,
+    // Foursquare) renvoient [] si non configurées → aucun impact.
+    const [am, fs, ov, wk] = await Promise.all([
+      discoverAmadeus(geo.lat, geo.lon).catch(() => [] as PlaceActivity[]),
+      discoverFoursquare(geo.lat, geo.lon).catch(() => [] as PlaceActivity[]),
       discoverOverpass(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
       discoverWikipedia(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
     ]);
 
+    // Amadeus & Foursquare d'abord (plus riches : prix/photos), puis OSM/Wikipédia.
     const seen = new Set<string>();
     const places: PlaceActivity[] = [];
-    for (const p of [...ov, ...wk]) {
+    for (const p of [...am, ...fs, ...ov, ...wk]) {
       const k = p.name.trim().toLowerCase();
-      if (seen.has(k)) continue;
+      if (!p.name || seen.has(k)) continue;
       seen.add(k);
       places.push(p);
-      if (places.length >= 24) break;
+      if (places.length >= 28) break;
     }
 
     if (places.length > 0) cache.set(key, { at: Date.now(), places });

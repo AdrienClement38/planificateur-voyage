@@ -899,6 +899,7 @@ function toActivityInput(a: ActivityProposal): ActivityInput {
     reviewsCount: a.reviewsCount,
     duration: a.duration,
     bookingUrl: a.bookingUrl,
+    imageUrl: a.imageUrl,
   };
 }
 

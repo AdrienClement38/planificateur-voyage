@@ -121,6 +121,7 @@ export const activities = pgTable("activities", {
   reviewsCount: integer("reviews_count"),
   duration: text("duration"),
   bookingUrl: text("booking_url"),
+  imageUrl: text("image_url"), // photo réelle (Amadeus / Foursquare), sinon null
 }, (t) => [index("activities_trip_idx").on(t.tripId)]);
 
 export const activityVotes = pgTable(

@@ -31,6 +31,7 @@ export interface ActivityProposal {
   reviewsCount?: number;
   duration?: string;
   bookingUrl?: string;
+  imageUrl?: string;
 }
 
 export interface ItineraryEvent {
