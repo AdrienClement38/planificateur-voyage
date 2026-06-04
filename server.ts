@@ -437,7 +437,7 @@ async function buildOfflineItinerary(
   const real = await fetchPlaceActivities(destination);
 
   const activities =
-    real.length >= 6
+    real.length > 0
       ? real.map((act, index) => ({
           id: `act-real-${cleanKey}-${index}`,
           name: act.name,
