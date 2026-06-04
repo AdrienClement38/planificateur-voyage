@@ -77,6 +77,8 @@ export function useTripController() {
   const [isLoadingTrip, setIsLoadingTrip] = useState(false);
   const [mutationError, setMutationError] = useState("");
   const socketCloser = useRef<(() => void) | null>(null);
+  // Page courante de suggestions (pagination « Voir d'autres idées »).
+  const suggestionPageRef = useRef(0);
 
   // --- Navigation ---
   const [activePage, setActivePage] = useState<ActivePage>("dashboard");
@@ -554,6 +556,7 @@ export function useTripController() {
         );
         await tripsApi.putItinerary(activeTrip.id, empty);
       }
+      suggestionPageRef.current = 0; // page 0 vient d'être chargée ; « plus » ira en page 1
       await openTrip(activeTrip.id);
     } catch (err) {
       setGenerationError(err instanceof ApiError ? err.message : "Génération impossible.");
@@ -563,46 +566,48 @@ export function useTripController() {
   }, [activeTrip, openTrip]);
 
   /**
-   * Récupère un lot SUPPLÉMENTAIRE d'activités d'une source précise (bouton
-   * « Chercher plus sur GetYourGuide / Airbnb / Google »), paginé, et l'ajoute
-   * au pool (dédupliqué par nom). Renvoie le nombre de nouveautés ajoutées.
+   * « Voir d'autres idées » : va chercher la PAGE SUIVANTE de la liste profonde
+   * (déjà classée du plus au moins pertinent) et l'ajoute au pool SANS supprimer
+   * les anciennes (dédupliqué par nom). Si une page ne contient que du déjà-vu
+   * (ex. après un rechargement), on avance jusqu'à trouver du neuf ou épuiser le
+   * catalogue. Renvoie le nombre de nouveautés ajoutées (0 = plus rien à proposer).
    */
-  const handleFetchMoreActivities = useCallback(
-    async (source: string, page: number): Promise<number> => {
-      if (!activeTrip || !activeTrip.selectedDestination) return 0;
-      setIsGenerating(true);
-      setGenerationError("");
-      try {
+  const handleMoreSuggestions = useCallback(async (): Promise<number> => {
+    if (!activeTrip || !activeTrip.selectedDestination) return 0;
+    setIsGenerating(true);
+    setGenerationError("");
+    try {
+      const existingNames = new Set(activeTrip.activities.map((a) => a.name.toLowerCase().trim()));
+      for (let tries = 0; tries < 4; tries++) {
+        const nextPage = suggestionPageRef.current + 1;
         const data = (await suggestActivities({
           destination: activeTrip.selectedDestination,
           days: activeTrip.targetDays,
           budgetType: activeTrip.budgetType,
           adults: activeTrip.members.length || 6,
-          source,
-          page,
+          page: nextPage,
         })) as { activities?: ActivityProposal[] };
-
-        const existingNames = new Set(activeTrip.activities.map((a) => a.name.toLowerCase().trim()));
-        const fresh = (data.activities ?? [])
+        const returned = data.activities ?? [];
+        suggestionPageRef.current = nextPage;
+        if (returned.length === 0) return 0; // catalogue épuisé
+        const fresh = returned
           .map(toActivityInput)
           .filter((a) => !existingNames.has(a.name.toLowerCase().trim()));
-
         if (fresh.length > 0) {
           await tripsApi.bulkActivities(activeTrip.id, fresh);
           await openTrip(activeTrip.id);
+          return fresh.length;
         }
-        // Aucune nouveauté = silencieux : la liste se réorganise quand même
-        // côté UI, on n'affiche pas d'erreur (le catalogue est simplement épuisé).
-        return fresh.length;
-      } catch (err) {
-        setGenerationError(err instanceof ApiError ? err.message : "Recherche impossible.");
-        return 0;
-      } finally {
-        setIsGenerating(false);
+        // Page entièrement déjà connue → on tente la suivante.
       }
-    },
-    [activeTrip, openTrip],
-  );
+      return 0;
+    } catch (err) {
+      setGenerationError(err instanceof ApiError ? err.message : "Recherche impossible.");
+      return 0;
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [activeTrip, openTrip]);
 
   const handleSendChat = useCallback(
     (e: FormEvent) => {
@@ -870,7 +875,7 @@ export function useTripController() {
     handleScheduleActivity,
     handleAutoPlanFromVotes,
     handleGenerateItinerary,
-    handleFetchMoreActivities,
+    handleMoreSuggestions,
     handleSendChat,
     handleAddManualEvent,
     handleDeleteEvent,

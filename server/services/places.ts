@@ -871,15 +871,16 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const withPhoto = ranked.filter((p) => p.imageUrl);
     const pool = withPhoto.length >= 5 ? withPhoto : ranked;
 
-    // Variété (max 7 / catégorie) + plafond à 16 pépites. Plafond catégorie assez
-    // haut pour ne pas affamer les villes mono-thème (Rome = surtout Culture).
+    // Liste PROFONDE classée du plus pertinent au moins pertinent (notoriété),
+    // pour alimenter la pagination « Voir d'autres idées ». Plafond généreux par
+    // catégorie (pas d'affamage des villes mono-thème) et total raisonnable.
     const perCat: Record<string, number> = {};
     const curated: PlaceActivity[] = [];
     for (const p of pool) {
       perCat[p.category] = (perCat[p.category] ?? 0) + 1;
-      if (perCat[p.category] > 7) continue;
+      if (perCat[p.category] > 12) continue;
       curated.push(p);
-      if (curated.length >= 16) break;
+      if (curated.length >= 40) break;
     }
 
     if (curated.length > 0) cache.set(key, { at: Date.now(), places: curated });

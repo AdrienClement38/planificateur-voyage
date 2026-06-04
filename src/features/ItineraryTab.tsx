@@ -28,6 +28,7 @@ export default function ItineraryTab() {
     isGenerating,
     generationError,
     handleGenerateItinerary,
+    handleMoreSuggestions,
     currentMember,
     handleToggleActivityVote,
     handleDeleteActivity,
@@ -68,12 +69,6 @@ export default function ItineraryTab() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   if (!activeTrip || !currentMember) return null;
-
-  // « Voir d'autres idées » → (re)cherche les VRAIES activités géolocalisées
-  // du lieu (OpenStreetMap + Wikipédia + Wikidata).
-  const refreshSuggestions = async () => {
-    await handleGenerateItinerary();
-  };
 
   /** Étapes d'un jour donné (pour la détection de conflit de créneau). */
   const dayEventsOf = (dayNum: number) =>
@@ -239,10 +234,11 @@ export default function ItineraryTab() {
   };
   const listToRender = showFavorites ? favorites : rotate(suggestionPool, refreshTick * 3);
 
-  // « Voir d'autres idées » : réorganise la liste ET tente d'en charger de nouvelles.
+  // « Voir d'autres idées » : va chercher la page SUIVANTE (sans supprimer les
+  // anciennes) ; si le catalogue est épuisé, on se contente de réorganiser.
   const seeMore = async () => {
-    setRefreshTick((t) => t + 1);
-    await refreshSuggestions();
+    const added = await handleMoreSuggestions();
+    if (added === 0) setRefreshTick((t) => t + 1);
   };
 
   // Emoji de catégorie réelle (tag OSM) pour le badge des cartes.
@@ -339,24 +335,36 @@ export default function ItineraryTab() {
 
                   return (
                     <div key={act.id} className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2 hover:border-indigo-500/30 transition-all group">
-                      {/* Photo réelle si la source en fournit une */}
-                      {act.imageUrl && (
-                        <img
-                          src={act.imageUrl}
-                          alt={act.name}
-                          loading="lazy"
-                          className="w-full h-44 object-cover object-center rounded-xl border border-white/10"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                      )}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <h5 className="font-bold text-xs text-indigo-50 leading-snug">{act.name}</h5>
+                      {/* Carte horizontale : vignette carrée (photo réelle, peu coupée) + contenu */}
+                      <div className="flex gap-3">
+                        {act.imageUrl && (
+                          <div className="relative shrink-0">
+                            <img
+                              src={act.imageUrl}
+                              alt={act.name}
+                              loading="lazy"
+                              className="w-24 h-24 sm:w-28 sm:h-28 object-cover object-center rounded-xl border border-white/10"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                            {act.cost > 0 && (
+                              <span className="absolute top-1 left-1 text-[10px] font-bold text-emerald-200 bg-emerald-950/85 border border-emerald-900/40 px-1.5 py-0.5 rounded">
+                                {act.cost}€
+                              </span>
+                            )}
                           </div>
-                          <div className="flex flex-wrap items-center gap-1.5 py-0.5">
+                        )}
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <h5 className="font-bold text-sm text-indigo-50 leading-snug">{act.name}</h5>
+                            {!act.imageUrl && act.cost > 0 && (
+                              <span className="text-xs font-bold text-emerald-400 shrink-0 bg-emerald-950/60 border border-emerald-900/30 px-2 py-0.5 rounded">
+                                {act.cost}€
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {act.category && (
                               <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[8px] font-extrabold px-1.5 py-0.5 rounded leading-none whitespace-nowrap uppercase tracking-wide">
                                 {CATEGORY_EMOJI[act.category] ?? "📍"} {act.category}
@@ -371,34 +379,26 @@ export default function ItineraryTab() {
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed block">
+                          <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">
                             {act.description}
                           </p>
-                        </div>
-
-                        {/* Prix affiché uniquement s'il est réellement connu (> 0). */}
-                        {act.cost > 0 && (
-                          <span className="text-xs font-bold text-emerald-400 shrink-0 bg-emerald-950/60 border border-emerald-900/30 px-2 py-0.5 rounded">
-                            {act.cost}€
+                          <span className="text-[10px] text-slate-400 flex items-center gap-1 flex-wrap">
+                            Source : <strong className="text-indigo-300 font-semibold">{act.proposedBy}</strong>
+                            {act.bookingUrl && (
+                              <a
+                                href={act.bookingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[10px] text-indigo-400 hover:text-indigo-300 hover:underline transition ml-1"
+                              >
+                                Voir le lieu ↗️
+                              </a>
+                            )}
                           </span>
-                        )}
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-1.5 border-t border-white/5">
-                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                          Source : <strong className="text-indigo-300 font-semibold">{act.proposedBy}</strong>
-                          {act.bookingUrl && (
-                            <a
-                              href={act.bookingUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-0.5 text-[10px] text-indigo-400 hover:text-indigo-300 hover:underline transition ml-1.5"
-                            >
-                              Voir le lieu ↗️
-                            </a>
-                          )}
-                        </span>
-
+                      <div className="flex items-center justify-end pt-1.5 border-t border-white/5">
                         {/* Activity Interactivity buttons: Vote and Schedule */}
                         <div className="flex items-center gap-1.5">
                           <button

@@ -417,12 +417,13 @@ function generateGoogleActivities(destination: string, costMultiplier: number): 
 
 // Generate the complete deterministic timeline asynchronously
 async function buildOfflineItinerary(
-  destination: string, 
-  days: number, 
-  budgetType: string, 
-  adults: number = 6, 
-  checkin: string = "2026-07-20", 
-  checkout: string = "2026-07-26"
+  destination: string,
+  days: number,
+  budgetType: string,
+  adults: number = 6,
+  checkin: string = "2026-07-20",
+  checkout: string = "2026-07-26",
+  page: number = 0
 ) {
   const cleanKey = destination.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   
@@ -435,11 +436,16 @@ async function buildOfflineItinerary(
   //    QUE des données factuelles : nom réel, vraie description, catégorie réelle,
   //    lien réel. Aucun prix/note/avis « estimé », aucun faux vote.
   const real = await fetchPlaceActivities(destination);
+  // Pagination « Voir d'autres idées » : on sert une tranche de la liste profonde
+  // (déjà classée du + au - pertinent). Page au-delà de la liste = tranche vide
+  // (catalogue épuisé) — surtout PAS le repli hors-ligne.
+  const PAGE_SIZE = 12;
+  const realPage = real.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const activities =
     real.length > 0
-      ? real.map((act, index) => ({
-          id: `act-real-${cleanKey}-${index}`,
+      ? realPage.map((act, index) => ({
+          id: `act-real-${cleanKey}-${page * PAGE_SIZE + index}`,
           name: act.name,
           description: act.description,
           cost: act.cost ?? 0, // prix RÉEL si fourni, sinon 0, jamais inventé
@@ -498,104 +504,13 @@ async function buildOfflineItinerary(
   };
 }
 
-// Banques de thèmes pour générer DAVANTAGE d'activités d'une source précise,
-// paginées (chaque "page" renvoie un lot différent). Réalistes mais générées :
-// le lien "Voir l'offre" pointe vers la recherche réelle de la source.
-type ThemeTemplate = {
-  label: string;
-  desc: string;
-  cost: number;
-  category: Activity["category"];
-  duration: string;
-  rating: number;
-};
+// (Banques de thèmes « générés » supprimées : on ne fabrique plus de fausses
+//  activités — les suggestions viennent uniquement des sources réelles.)
 
-const GYG_THEMES: ThemeTemplate[] = [
-  { label: "Billet coupe-file du musée principal", desc: "Accès prioritaire et audioguide pour explorer les collections phares sans la queue.", cost: 19, category: "Culture", duration: "2h", rating: 4.7 },
-  { label: "Visite guidée à vélo électrique", desc: "Parcourez les incontournables sans effort avec un guide local passionné.", cost: 34, category: "Loisir", duration: "3h", rating: 4.8 },
-  { label: "Excursion d'une demi-journée aux alentours", desc: "Transport inclus vers les plus beaux sites de la région, en petit groupe.", cost: 45, category: "Nature", duration: "demi-journée", rating: 4.7 },
-  { label: "Tour panoramique en bus à arrêts multiples", desc: "Faites le tour des incontournables et descendez où vous voulez.", cost: 24, category: "Loisir", duration: "1h30", rating: 4.6 },
-  { label: "Tour gastronomique street-food", desc: "Dégustez 6 spécialités locales chez les meilleurs artisans du centre.", cost: 42, category: "Gastronomie", duration: "3h", rating: 4.9 },
-  { label: "Visite nocturne aux flambeaux", desc: "Légendes et anecdotes dans les ruelles illuminées, frissons garantis.", cost: 18, category: "Visite", duration: "2h", rating: 4.6 },
-  { label: "City pass transports + attractions 48h", desc: "Entrées et trajets illimités : la formule maline pour tout voir.", cost: 59, category: "Visite", duration: "2 jours", rating: 4.5 },
-  { label: "Atelier dégustation de produits du terroir", desc: "Initiation guidée aux saveurs et savoir-faire de la région.", cost: 35, category: "Gastronomie", duration: "2h", rating: 4.8 },
-  { label: "Excursion en 4x4 dans l'arrière-pays", desc: "Pistes, panoramas et villages perchés avec un chauffeur-guide.", cost: 72, category: "Nature", duration: "1 journée", rating: 4.7 },
-  { label: "Spectacle folklorique avec dîner", desc: "Soirée immersive : musique, danses et menu de spécialités.", cost: 49, category: "Culture", duration: "3h", rating: 4.6 },
-  { label: "Atelier artisanal avec un maître local", desc: "Mettez la main à la pâte aux côtés d'un savoir-faire traditionnel.", cost: 28, category: "Culture", duration: "2h", rating: 4.8 },
-  { label: "Chasse au trésor urbaine en équipe", desc: "Énigmes et défis dans la vieille ville, idéal entre amis.", cost: 16, category: "Loisir", duration: "2h", rating: 4.5 },
-];
-
-const AIRBNB_THEMES: ThemeTemplate[] = [
-  { label: "Cours de cuisine chez l'habitant", desc: "Cuisinez un repas typique de {dest} avec un hôte passionné, puis dégustez ensemble.", cost: 48, category: "Gastronomie", duration: "3h", rating: 4.95 },
-  { label: "Balade photo avec un local", desc: "Repérez les plus beaux spots méconnus et repartez avec vos clichés.", cost: 33, category: "Loisir", duration: "2h", rating: 4.85 },
-  { label: "Atelier poterie avec un artisan", desc: "Façonnez votre souvenir de {dest} dans un atelier de quartier chaleureux.", cost: 26, category: "Culture", duration: "2h", rating: 4.9 },
-  { label: "Tournée des bars cachés", desc: "Speakeasies et cocktails de mixologues, l'âme nocturne de {dest}.", cost: 31, category: "Loisir", duration: "2h30", rating: 4.8 },
-  { label: "Randonnée secrète hors des sentiers", desc: "Un local vous emmène sur ses chemins favoris, loin des foules.", cost: 22, category: "Nature", duration: "demi-journée", rating: 4.88 },
-  { label: "Dégustation de fromages & charcuterie fermière", desc: "Produits du terroir commentés par un passionné, vin compris.", cost: 29, category: "Gastronomie", duration: "2h", rating: 4.92 },
-  { label: "Atelier mixologie & cocktails locaux", desc: "Apprenez à réaliser 3 cocktails signature avec un barman passionné.", cost: 38, category: "Loisir", duration: "2h", rating: 4.83 },
-  { label: "Cours de danse traditionnelle", desc: "Apprenez les pas locaux en musique, fous rires assurés.", cost: 24, category: "Culture", duration: "1h30", rating: 4.8 },
-  { label: "Marché local & brunch fait maison", desc: "Courses avec votre hôte puis brunch préparé ensemble.", cost: 34, category: "Gastronomie", duration: "3h", rating: 4.9 },
-  { label: "Yoga au lever du soleil face au paysage", desc: "Séance douce et apaisante pour démarrer la journée en beauté.", cost: 19, category: "Loisir", duration: "1h", rating: 4.87 },
-  { label: "Visite d'un atelier d'artiste", desc: "Rencontre intimiste avec un créateur de {dest} et son univers.", cost: 21, category: "Culture", duration: "1h30", rating: 4.84 },
-  { label: "Soirée musique live chez un musicien", desc: "Concert privé et échange autour des musiques de la région.", cost: 27, category: "Culture", duration: "2h", rating: 4.86 },
-];
-
-const GOOGLE_THEMES: ThemeTemplate[] = [
-  { label: "Parc & jardins botaniques", desc: "Une bulle de verdure idéale pour une pause ou un pique-nique.", cost: 0, category: "Nature", duration: "visite libre", rating: 4.5 },
-  { label: "Point de vue panoramique", desc: "Le meilleur belvédère pour embrasser {dest} du regard.", cost: 0, category: "Nature", duration: "1h", rating: 4.6 },
-  { label: "Cathédrale / monument emblématique", desc: "L'incontournable historique à ne pas manquer en plein cœur de {dest}.", cost: 0, category: "Culture", duration: "1h", rating: 4.7 },
-  { label: "Quartier historique piéton", desc: "Ruelles pavées, façades anciennes et terrasses animées.", cost: 0, category: "Visite", duration: "visite libre", rating: 4.6 },
-  { label: "Marché couvert traditionnel", desc: "Étals colorés, produits frais et ambiance authentique.", cost: 0, category: "Gastronomie", duration: "1h", rating: 4.5 },
-  { label: "Musée d'art moderne", desc: "Collections contemporaines dans un bel écrin architectural.", cost: 12, category: "Culture", duration: "2h", rating: 4.6 },
-  { label: "Sentier de randonnée balisé", desc: "Une boucle nature accessible pour s'aérer et profiter des paysages.", cost: 0, category: "Nature", duration: "demi-journée", rating: 4.6 },
-  { label: "Rue commerçante principale", desc: "Boutiques, créateurs et bonnes adresses pour le shopping.", cost: 0, category: "Shopping", duration: "1h", rating: 4.4 },
-  { label: "Belvédère & table d'orientation", desc: "Le meilleur spot pour une vue dégagée et quelques photos.", cost: 0, category: "Nature", duration: "1h", rating: 4.6 },
-  { label: "Place centrale animée", desc: "Le cœur battant de {dest} : cafés, fontaines et vie locale.", cost: 0, category: "Visite", duration: "visite libre", rating: 4.5 },
-  { label: "Théâtre / opéra historique", desc: "Architecture remarquable et programmation à découvrir.", cost: 8, category: "Culture", duration: "1h", rating: 4.7 },
-  { label: "Téléphérique / funiculaire panoramique", desc: "Montée spectaculaire vers les hauteurs et leur vue imprenable.", cost: 15, category: "Loisir", duration: "1h", rating: 4.6 },
-];
-
-function sourceSearchUrl(source: string, dest: string, theme: string): string {
-  const q = encodeURIComponent(`${dest} ${theme}`);
-  if (source === "GetYourGuide") return `https://www.getyourguide.fr/s/?q=${q}`;
-  if (source === "Airbnb Expériences")
-    return `https://www.airbnb.fr/s/${encodeURIComponent(dest)}/experiences?query=${encodeURIComponent(theme)}`;
-  return `https://www.google.com/search?q=${q}`;
-}
-
-/** Génère un lot paginé de `count` activités pour une source donnée. */
-function generateExtraActivities(
-  source: string,
-  destination: string,
-  costMultiplier: number,
-  page: number,
-  count = 6,
-): Activity[] {
-  const normDest = destination.charAt(0).toUpperCase() + destination.slice(1);
-  const bank =
-    source === "GetYourGuide" ? GYG_THEMES : source === "Airbnb Expériences" ? AIRBNB_THEMES : GOOGLE_THEMES;
-  const out: Activity[] = [];
-  for (let i = 0; i < count; i++) {
-    const idx = (page * count + i) % bank.length;
-    const t = bank[idx];
-    out.push({
-      name: `${t.label} à ${normDest}`,
-      description: t.desc.replace(/\{dest\}/g, normDest),
-      cost: Math.round(t.cost * costMultiplier),
-      category: t.category,
-      source: source as Activity["source"],
-      rating: t.rating,
-      reviewsCount: 80 + ((idx * 137 + page * 53) % 4000),
-      duration: t.duration,
-      bookingUrl: sourceSearchUrl(source, normDest, t.label),
-    });
-  }
-  return out;
-}
 
 // REST route to suggest activities with absolute robustness
 app.post("/api/suggest-activities", async (req, res) => {
-  const { destination, days, budgetType, adults, checkin, checkout, source, page } = req.body;
+  const { destination, days, budgetType, adults, checkin, checkout, page } = req.body;
 
   if (!destination) {
     return res.status(400).json({ error: "La destination est requise." });
@@ -603,40 +518,20 @@ app.post("/api/suggest-activities", async (req, res) => {
 
   const requestedDays = Math.min(Math.max(Number(days) || 3, 1), 21);
   const budget = budgetType || "Modéré";
+  const pageNum = Math.max(0, Number(page) || 0);
 
-  // Demande ciblée : un lot supplémentaire d'une source précise (bouton
-  // "Chercher plus sur GetYourGuide / Airbnb / Google").
-  if (source) {
-    const costMultiplier = budget === "Économique" ? 0.6 : budget === "Luxe" ? 2.5 : 1.0;
-    const cleanKey = destination.toLowerCase().trim().replace(/\s+/g, "-");
-    const acts = generateExtraActivities(source, destination, costMultiplier, Number(page) || 0).map(
-      (act, index) => ({
-        id: `act-extra-${cleanKey}-${index}-${Number(page) || 0}`,
-        name: act.name,
-        description: act.description,
-        cost: act.cost,
-        category: act.category,
-        proposedBy:
-          source === "GetYourGuide"
-            ? "GetYourGuide 🎫"
-            : source === "Airbnb Expériences"
-              ? "Airbnb Expériences 🏠"
-              : "Google Activités ✈️",
-        source: act.source,
-        rating: act.rating,
-        reviewsCount: act.reviewsCount,
-        duration: act.duration,
-        bookingUrl: act.bookingUrl,
-        votes: [],
-      }),
-    );
-    return res.json({ activities: acts });
-  }
-
-  console.log(`[API Live Suggestions] Generative request for: ${destination}, days: ${requestedDays}, budget: ${budget}`);
+  console.log(`[API Live Suggestions] ${destination} · jours ${requestedDays} · page ${pageNum}`);
 
   try {
-    const results = await buildOfflineItinerary(destination, requestedDays, budget, adults, checkin, checkout);
+    const results = await buildOfflineItinerary(
+      destination,
+      requestedDays,
+      budget,
+      adults,
+      checkin,
+      checkout,
+      pageNum,
+    );
     return res.json(results);
   } catch (err: any) {
     return res.status(500).json({ error: "Échec de génération du parcours.", details: err?.message });
