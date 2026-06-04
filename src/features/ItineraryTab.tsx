@@ -64,6 +64,8 @@ export default function ItineraryTab() {
   const [refreshTick, setRefreshTick] = useState(0);
   // Vue « Mes favoris » (activités que j'ai aimées/votées).
   const [showFavorites, setShowFavorites] = useState(false);
+  // Filtre par catégorie réelle (null/"all" = toutes).
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   if (!activeTrip || !currentMember) return null;
 
@@ -216,8 +218,15 @@ export default function ItineraryTab() {
     return null;
   };
 
-  // Pool de suggestions disponibles = activités non encore planifiées.
-  const suggestionPool = activeTrip.activities.filter((act) => !isPlanned(act.name));
+  // Activités non planifiées, et catégories réellement présentes (pour le filtre).
+  const unplannedPool = activeTrip.activities.filter((act) => !isPlanned(act.name));
+  const presentCategories: string[] = Array.from(
+    new Set(unplannedPool.map((a) => String(a.category)).filter((c) => c.length > 0)),
+  );
+  const suggestionPool =
+    categoryFilter === "all"
+      ? unplannedPool
+      : unplannedPool.filter((a) => a.category === categoryFilter);
 
   // Mes favoris = activités que j'ai aimées (vote), planifiées ou non.
   const favorites = activeTrip.activities.filter((a) => a.votes.includes(currentMember.id));
@@ -244,6 +253,7 @@ export default function ItineraryTab() {
     Loisir: "🎟️",
     Visite: "📍",
     Shopping: "🛍️",
+    "Bien-être": "💆",
   };
 
   return (
@@ -513,6 +523,31 @@ export default function ItineraryTab() {
                   ⭐ Favoris{favorites.length > 0 ? ` (${favorites.length})` : ""}
                 </button>
               </div>
+
+              {/* Filtres par catégorie réelle (affichés selon ce qui existe) */}
+              {!showFavorites && presentCategories.length > 1 && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setCategoryFilter("all")}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-full transition cursor-pointer ${
+                      categoryFilter === "all" ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                    }`}
+                  >
+                    Toutes
+                  </button>
+                  {presentCategories.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setCategoryFilter(cat)}
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded-full transition cursor-pointer ${
+                        categoryFilter === cat ? "bg-indigo-600 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                      }`}
+                    >
+                      {CATEGORY_EMOJI[cat] ?? "📍"} {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {!showFavorites && activeTrip.selectedDestination && (
                 <button

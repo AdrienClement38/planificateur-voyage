@@ -12,7 +12,7 @@
  * vide si tout échoue (l'appelant affiche un état vide honnête, pas de faux).
  */
 
-type Cat = "Visite" | "Gastronomie" | "Culture" | "Loisir" | "Nature" | "Shopping";
+type Cat = "Visite" | "Gastronomie" | "Culture" | "Loisir" | "Nature" | "Shopping" | "Bien-être";
 
 export interface PlaceActivity {
   name: string;
@@ -77,16 +77,26 @@ interface OverpassEl {
 }
 
 function classifyTags(tags: Record<string, string>): { category: Cat; duration: string } {
-  // Téléphériques, trains panoramiques, parcs d'attraction = des ACTIVITÉS.
+  // Bien-être : spas, thermes, bains.
+  if (tags.amenity === "spa" || tags.amenity === "public_bath" || tags.leisure === "spa")
+    return { category: "Bien-être", duration: "demi-journée" };
+  // Loisir : téléphériques, trains panoramiques, parcs (attraction/aquatique), sport.
   if (tags.aerialway || tags.railway) return { category: "Loisir", duration: "demi-journée" };
-  if (tags.natural) return { category: "Nature", duration: "demi-journée" };
-  if (tags.leisure === "park") return { category: "Nature", duration: "1h30" };
+  if (tags.leisure === "water_park" || tags.leisure === "sports_centre" || tags.leisure === "swimming_pool")
+    return { category: "Loisir", duration: "demi-journée" };
   const tour = tags.tourism;
-  if (tour === "museum" || tour === "gallery") return { category: "Culture", duration: "1h30" };
-  if (tour === "viewpoint") return { category: "Nature", duration: "1h" };
   if (tour === "zoo" || tour === "aquarium" || tour === "theme_park")
     return { category: "Loisir", duration: "demi-journée" };
+  // Culture : musées, galeries, théâtres, cinémas, monuments.
+  if (tour === "museum" || tour === "gallery") return { category: "Culture", duration: "1h30" };
+  if (tags.amenity === "theatre" || tags.amenity === "cinema" || tags.amenity === "arts_centre")
+    return { category: "Culture", duration: "2h" };
   if (tags.historic) return { category: "Culture", duration: "1h" };
+  // Nature : parcs, jardins, réserves, sommets, plages, panoramas…
+  if (tags.natural) return { category: "Nature", duration: "demi-journée" };
+  if (tags.leisure === "park" || tags.leisure === "garden" || tags.leisure === "nature_reserve")
+    return { category: "Nature", duration: "1h30" };
+  if (tour === "viewpoint") return { category: "Nature", duration: "1h" };
   return { category: "Visite", duration: "1h30" };
 }
 
@@ -104,13 +114,17 @@ async function discoverOverpass(
 ): Promise<PlaceActivity[]> {
   const q =
     `[out:json][timeout:25];(` +
+    // Lieux notables (avec fiche Wikidata) : monuments, musées, parcs, sommets…
     `nwr["tourism"~"^(attraction|museum|viewpoint|gallery|artwork|theme_park|zoo|aquarium)$"]["wikidata"](around:8000,${lat},${lon});` +
     `nwr["historic"~"^(monument|castle|ruins|memorial|archaeological_site|fort|city_gate)$"]["wikidata"](around:8000,${lat},${lon});` +
-    `nwr["leisure"~"^(park|water_park)$"]["wikidata"](around:8000,${lat},${lon});` +
-    `nwr["natural"~"^(peak|glacier|volcano)$"]["wikidata"](around:14000,${lat},${lon});` +
-    `nwr["aerialway"~"^(cable_car|gondola)$"]["wikidata"](around:16000,${lat},${lon});` +
-    `nwr["railway"~"^(funicular|narrow_gauge)$"]["wikidata"](around:16000,${lat},${lon});` +
-    `);out center tags 150;`;
+    `nwr["leisure"~"^(park|garden|nature_reserve)$"]["wikidata"](around:8000,${lat},${lon});` +
+    `nwr["natural"~"^(peak|glacier|volcano|beach|cave_entrance|waterfall)$"]["wikidata"](around:14000,${lat},${lon});` +
+    // Activités & bien-être (avec nom) : téléphériques, trains, spas, parcs aquatiques, théâtres…
+    `nwr["aerialway"="cable_car"]["name"](around:16000,${lat},${lon});` +
+    `nwr["railway"~"^(funicular|narrow_gauge)$"]["name"](around:16000,${lat},${lon});` +
+    `nwr["leisure"~"^(water_park|spa)$"]["name"](around:9000,${lat},${lon});` +
+    `nwr["amenity"~"^(spa|public_bath|theatre|arts_centre)$"]["name"](around:9000,${lat},${lon});` +
+    `);out center tags 200;`;
   const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
   const data = (await fetchJson(url, 22000)) as { elements?: OverpassEl[] } | null;
   const els = data?.elements ?? [];
@@ -202,18 +216,20 @@ async function discoverOverpass(
 
 // Titres à écarter : voies, transports, administratif, événements, bâtiments…
 const WIKI_BLOCK =
-  /unit[ée] urbaine|communaut[ée]|\bcanton\b|arrondissement|jeux olympiques|festival|cimeti[èe]re|tunnel|quartier|vall[ée]e de|gare des|liste de|^avenue |^rue | rue |^boulevard |^cours [a-zà-ÿ]|tramway|\btram\b|m[ée]tro\b|m[ée]tropole|^pays |\bsi[èe]ge de\b|bataille de|trait[ée] de|congr[èe]s|incendie|attentat|bombardement|occupation|annexion|lib[ée]ration de|^immeuble |^maison (?!de la culture)|^h[ôo]tel (?!de ville|dieu|de r[ée]gion)|^station |^ligne |a[ée]roport|h[ôo]pital|lyc[ée]e|coll[èe]ge|universit[ée]/i;
+  /unit[ée] urbaine|communaut[ée]|\bcanton\b|arrondissement|jeux olympiques|festival|cosmo|cimeti[èe]re|tunnel|quartier|vall[ée]e de|gare des|gare de [a-zà-ÿ' -]+-mont-blanc$|presbyt[èe]re|liste de|^avenue |^rue | rue |^boulevard |^cours [a-zà-ÿ]|tramway|\btram\b|m[ée]tro\b|m[ée]tropole|^pays |\bsi[èe]ge de\b|bataille de|trait[ée] de|congr[èe]s|incendie|attentat|bombardement|occupation|annexion|lib[ée]ration de|^immeuble |^maison (?!de la culture)|^h[ôo]tel (?!de ville|dieu|de r[ée]gion)|^ligne |a[ée]roport|h[ôo]pital|lyc[ée]e|coll[èe]ge|universit[ée]/i;
 
 function classifyTitle(title: string): { category: Cat; duration: string } {
   const t = title.toLowerCase();
-  if (/mus[ée]e|galerie|fondation/.test(t)) return { category: "Culture", duration: "1h30" };
+  if (/spa|thermes|thermal|\bbains\b|bien-[êe]tre|wellness|sauna/.test(t))
+    return { category: "Bien-être", duration: "demi-journée" };
+  if (/t[ée]l[ée](ph[ée]|f[ée])rique|t[ée]l[ée]cabine|funiculaire|cr[ée]maill[èe]re|montenvers|\bgare de\b|petit train|train du|luge|patinoire|parc aquatique|aquarium|\bzoo\b/.test(t))
+    return { category: "Loisir", duration: "demi-journée" };
+  if (/mus[ée]e|galerie|fondation|th[ée][âa]tre|op[ée]ra/.test(t)) return { category: "Culture", duration: "1h30" };
   if (/[ée]glise|temple|cath[ée]drale|basilique|chapelle|abbaye|monast[èe]re/.test(t))
     return { category: "Culture", duration: "1h" };
-  if (/t[ée]l[ée]ph[ée]rique|t[ée]l[ée]cabine|funiculaire|montenvers/.test(t))
+  if (/mont|aiguille|\bpic\b|\blac\b|glacier|parc|jardin|cascade|gorges|plage|colline|sommet|\bcol\b|grotte|r[ée]serve|presqu/.test(t))
     return { category: "Nature", duration: "demi-journée" };
-  if (/mont|aiguille|\bpic\b|\blac\b|glacier|parc|jardin|cascade|gorges|plage|colline|sommet|\bcol\b|grotte/.test(t))
-    return { category: "Nature", duration: "demi-journée" };
-  if (/place|fontaine|\bpont\b|palais|ch[âa]teau|\btour\b|porte|\barc\b|forum|amphith[ée][âa]tre|colis[ée]e|ar[èe]nes/.test(t))
+  if (/place|fontaine|\bpont\b|palais|ch[âa]teau|\btour\b|porte|\barc\b|forum|amphith[ée][âa]tre|colis[ée]e|ar[èe]nes|halle|hôtel de ville/.test(t))
     return { category: "Culture", duration: "1h" };
   return { category: "Visite", duration: "1h30" };
 }
@@ -269,11 +285,22 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const geo = await geocode(destination);
     if (!geo) return [];
 
-    // 1) Overpass (le plus propre). 2) Repli réel Wikipédia si trop peu/échec.
-    let places = await discoverOverpass(geo.lat, geo.lon, destination);
-    if (places.length < 6) {
-      const wiki = await discoverWikipedia(geo.lat, geo.lon, destination);
-      if (wiki.length > places.length) places = wiki;
+    // Deux sources RÉELLES en parallèle, puis fusion : Overpass (propre, taggé)
+    // d'abord, Wikipédia (fiable, complète) ensuite. Si Overpass timeout (villes
+    // denses), Wikipédia assure quand même un résultat — ça marche partout.
+    const [ov, wk] = await Promise.all([
+      discoverOverpass(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
+      discoverWikipedia(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
+    ]);
+
+    const seen = new Set<string>();
+    const places: PlaceActivity[] = [];
+    for (const p of [...ov, ...wk]) {
+      const k = p.name.trim().toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      places.push(p);
+      if (places.length >= 24) break;
     }
 
     if (places.length > 0) cache.set(key, { at: Date.now(), places });
