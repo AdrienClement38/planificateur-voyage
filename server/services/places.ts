@@ -54,16 +54,6 @@ async function geocode(destination: string): Promise<{ lat: number; lon: number 
   return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
 }
 
-function wikiArticleUrl(wp: string): string {
-  // wp = "fr:Colisée"
-  const i = wp.indexOf(":");
-  if (i <= 0) return "";
-  const lang = wp.slice(0, i);
-  const title = wp.slice(i + 1);
-  if (!/^[a-z]{2,3}$/.test(lang) || !title) return "";
-  return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
-}
-
 /** Récupère les intros Wikipédia (fr) pour une liste de titres, en un appel. */
 async function fetchExtracts(titles: string[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
@@ -87,7 +77,8 @@ interface OverpassEl {
 }
 
 function classifyTags(tags: Record<string, string>): { category: Cat; duration: string } {
-  if (tags.aerialway) return { category: "Nature", duration: "demi-journée" };
+  // Téléphériques, trains panoramiques, parcs d'attraction = des ACTIVITÉS.
+  if (tags.aerialway || tags.railway) return { category: "Loisir", duration: "demi-journée" };
   if (tags.natural) return { category: "Nature", duration: "demi-journée" };
   if (tags.leisure === "park") return { category: "Nature", duration: "1h30" };
   const tour = tags.tourism;
@@ -99,10 +90,11 @@ function classifyTags(tags: Record<string, string>): { category: Cat; duration: 
   return { category: "Visite", duration: "1h30" };
 }
 
-function overpassLink(tags: Record<string, string>): string {
+/** Lien : site officiel (OSM) sinon la fiche Google Maps du lieu (utile et moderne). */
+function placeLink(tags: Record<string, string>, name: string, dest: string): string {
   const site = tags.website || tags["contact:website"] || tags.url;
   if (site && /^https?:\/\//i.test(site)) return site.split(";")[0].trim();
-  return tags.wikipedia ? wikiArticleUrl(tags.wikipedia) : "";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${dest}`)}`;
 }
 
 async function discoverOverpass(
@@ -112,12 +104,13 @@ async function discoverOverpass(
 ): Promise<PlaceActivity[]> {
   const q =
     `[out:json][timeout:25];(` +
-    `nwr["tourism"~"^(attraction|museum|viewpoint|gallery|artwork|theme_park|zoo|aquarium)$"]["wikidata"](around:7000,${lat},${lon});` +
-    `nwr["historic"~"^(monument|castle|ruins|memorial|archaeological_site|fort|city_gate)$"]["wikidata"](around:7000,${lat},${lon});` +
-    `nwr["leisure"="park"]["wikidata"](around:7000,${lat},${lon});` +
+    `nwr["tourism"~"^(attraction|museum|viewpoint|gallery|artwork|theme_park|zoo|aquarium)$"]["wikidata"](around:8000,${lat},${lon});` +
+    `nwr["historic"~"^(monument|castle|ruins|memorial|archaeological_site|fort|city_gate)$"]["wikidata"](around:8000,${lat},${lon});` +
+    `nwr["leisure"~"^(park|water_park)$"]["wikidata"](around:8000,${lat},${lon});` +
     `nwr["natural"~"^(peak|glacier|volcano)$"]["wikidata"](around:14000,${lat},${lon});` +
-    `nwr["aerialway"~"^(cable_car|gondola)$"]["name"](around:14000,${lat},${lon});` +
-    `);out center tags 120;`;
+    `nwr["aerialway"~"^(cable_car|gondola)$"]["wikidata"](around:16000,${lat},${lon});` +
+    `nwr["railway"~"^(funicular|narrow_gauge)$"]["wikidata"](around:16000,${lat},${lon});` +
+    `);out center tags 150;`;
   const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`;
   const data = (await fetchJson(url, 22000)) as { elements?: OverpassEl[] } | null;
   const els = data?.elements ?? [];
@@ -128,6 +121,7 @@ async function discoverOverpass(
     tags: Record<string, string>;
     wiki?: string;
     qid?: string;
+    category: Cat;
   }
   const byName = new Map<string, Entry>();
   for (const el of els) {
@@ -135,7 +129,13 @@ async function discoverOverpass(
     const name = tags["name:fr"] || tags.name;
     if (!name || byName.has(name)) continue;
     const wp = tags.wikipedia;
-    byName.set(name, { name, tags, wiki: wp && wp.startsWith("fr:") ? wp.slice(3) : undefined, qid: tags.wikidata });
+    byName.set(name, {
+      name,
+      tags,
+      wiki: wp && wp.startsWith("fr:") ? wp.slice(3) : undefined,
+      qid: tags.wikidata,
+      category: classifyTags(tags).category,
+    });
   }
   if (byName.size === 0) return [];
 
@@ -152,8 +152,34 @@ async function discoverOverpass(
       fame[qid] = Object.keys(ent.sitelinks ?? {}).length;
     }
   }
-  entries.sort((a, b) => (fame[b.qid ?? ""] ?? 0) - (fame[a.qid ?? ""] ?? 0));
-  const ordered = entries.slice(0, 16);
+
+  // Diversifie : trie par notoriété DANS chaque catégorie, puis round-robin entre
+  // catégories — pour ne pas avoir 16 sommets mais un mix (sommets, musées,
+  // téléphériques, monuments…).
+  const buckets = new Map<Cat, Entry[]>();
+  for (const e of entries) {
+    if (!buckets.has(e.category)) buckets.set(e.category, []);
+    buckets.get(e.category)!.push(e);
+  }
+  for (const arr of buckets.values()) {
+    arr.sort((a, b) => (fame[b.qid ?? ""] ?? 0) - (fame[a.qid ?? ""] ?? 0));
+  }
+  // Plafonne les sommets pour ne pas noyer les musées, monuments, activités…
+  if (buckets.has("Nature")) buckets.set("Nature", buckets.get("Nature")!.slice(0, 6));
+  const cats = [...buckets.keys()];
+  const ordered: Entry[] = [];
+  for (let round = 0; ordered.length < 16; round++) {
+    let progressed = false;
+    for (const c of cats) {
+      const arr = buckets.get(c)!;
+      if (arr[round]) {
+        ordered.push(arr[round]);
+        progressed = true;
+        if (ordered.length >= 16) break;
+      }
+    }
+    if (!progressed) break;
+  }
 
   const extracts = await fetchExtracts(
     ordered.map((e) => e.wiki).filter((t): t is string => !!t),
@@ -167,7 +193,7 @@ async function discoverOverpass(
       description: (extract || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
       category,
       duration,
-      bookingUrl: overpassLink(e.tags),
+      bookingUrl: placeLink(e.tags, e.name, destination),
     };
   });
 }
@@ -223,7 +249,7 @@ async function discoverWikipedia(
       description: (extracts[title] || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
       category,
       duration,
-      bookingUrl: `https://fr.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`,
+      bookingUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${title}, ${destination}`)}`,
     };
   });
 }
