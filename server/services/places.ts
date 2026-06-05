@@ -422,10 +422,10 @@ async function wikidataAround(
   };
   // Wikidata est essentiel pour le classement par notoriété : 1 réessai si la
   // requête échoue (throttle/réseau), pour ne pas dégrader tout l'ordre.
-  let data = (await fetchJson(url, 10000)) as WdResp | null;
+  let data = (await fetchJson(url, 16000)) as WdResp | null;
   if (!data?.results) {
     await new Promise((r) => setTimeout(r, 800));
-    data = (await fetchJson(url, 10000)) as WdResp | null;
+    data = (await fetchJson(url, 16000)) as WdResp | null;
   }
   const byId = new Map<string, WdAgg>();
   for (const b of data?.results?.bindings ?? []) {
@@ -449,19 +449,24 @@ async function discoverWikidata(
   lon: number,
   destination: string,
 ): Promise<PlaceActivity[]> {
-  // Seuil ≥20 langues : rapide même en mégapole (sous 20, la requête explose en
-  // densité — Paris passait de 1 s à 8 s+). Les villes petites/moyennes sont de
-  // toute façon bien couvertes par OSM + Wikipédia + Wikivoyage.
-  const byId = await wikidataAround(lat, lon, 20, 6);
+  // Source PRINCIPALE des suggestions : rayon LARGE (20 km) pour capter les
+  // monuments des alentours (Versailles, Bygdøy…), seuil ≥10 langues pour
+  // descendre jusqu'aux musées notables. Le tri par sitelinks garde les plus
+  // connus en tête ; le cache 6 h absorbe la latence variable de Wikidata.
+  const byId = await wikidataAround(lat, lon, 14, 20);
   if (byId.size === 0) return [];
 
   const destLow = destination.toLowerCase().split(/[,(]/)[0].trim();
   // Candidats triés par notoriété, hors types évidents non visitables et hors
   // destination elle-même.
+  // On prend LARGE (110) : beaucoup de candidats à fort sitelinks sont des
+  // non-lieux (orgas, événements, régions…) qui seront retirés par le filtre
+  // « lieu » juste après — il faut donc sur-échantillonner pour qu'il reste ~50
+  // vrais lieux à la fin.
   const candidates = [...byId.entries()]
     .filter(([, a]) => ![...a.types].some((t) => WD_BAD_TYPES.has(t)) && a.label.toLowerCase() !== destLow)
     .sort((a, b) => b[1].sitelinks - a[1].sitelinks)
-    .slice(0, 56);
+    .slice(0, 110);
   if (candidates.length === 0) return [];
 
   // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
@@ -848,10 +853,15 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
       discoverWikipedia(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
     ]);
 
+    // Wikipédia (recherche de proximité) ramène des INSTITUTIONS (ministères,
+    // journaux, banques…) qui esquivent le filtre « lieu » de Wikidata. On ne
+    // l'utilise donc qu'en SECOURS, quand Wikidata est pauvre (petites villes).
+    const wikipediaFallback = wd.length >= 20 ? [] : wk;
+
     // Fusion + dédoublonnage (nom normalisé). On rassemble large, on curera après.
     const seen = new Set<string>();
     const merged: PlaceActivity[] = [];
-    for (const p of [...wd, ...fs, ...wv, ...ov, ...wk]) {
+    for (const p of [...wd, ...fs, ...wv, ...ov, ...wikipediaFallback]) {
       if (!p.name || NOISE_BLOCK.test(p.name)) continue;
       const k = dedupKey(p.name, destination);
       if (!k || seen.has(k)) continue;
