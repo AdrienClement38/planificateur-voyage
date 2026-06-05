@@ -410,7 +410,7 @@ async function wikidataAround(
     `OPTIONAL { ?item wdt:P18 ?image. }` +
     `} ORDER BY DESC(?sitelinks) LIMIT 260`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
-  const data = (await fetchJson(url, 10000)) as {
+  type WdResp = {
     results?: {
       bindings?: Array<{
         item?: { value?: string };
@@ -420,7 +420,14 @@ async function wikidataAround(
         image?: { value?: string };
       }>;
     };
-  } | null;
+  };
+  // Wikidata est essentiel pour le classement par notoriété : 1 réessai si la
+  // requête échoue (throttle/réseau), pour ne pas dégrader tout l'ordre.
+  let data = (await fetchJson(url, 10000)) as WdResp | null;
+  if (!data?.results) {
+    await new Promise((r) => setTimeout(r, 800));
+    data = (await fetchJson(url, 10000)) as WdResp | null;
+  }
   const byId = new Map<string, WdAgg>();
   for (const b of data?.results?.bindings ?? []) {
     const id = b.item?.value?.split("/").pop();
@@ -718,8 +725,9 @@ async function discoverFoursquare(
 
 // ------------------------------------------------------------------- Point d'entrée
 
-const cache = new Map<string, { at: number; places: PlaceActivity[] }>();
-const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+const cache = new Map<string, { at: number; places: PlaceActivity[]; ttl: number }>();
+const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h (résultat complet)
+const CACHE_TTL_DEGRADED = 15 * 60 * 1000; // 15 min si Wikidata a échoué (auto-réparation)
 
 // Entités à BANNIR du résultat final (notoriété trompeuse) : divisions
 // administratives (province, métropole, région…) et événements (festival,
@@ -832,7 +840,7 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
   try {
     const key = destination.trim().toLowerCase();
     const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_TTL) return hit.places;
+    if (hit && Date.now() - hit.at < hit.ttl) return hit.places;
 
     const geo = await geocode(destination);
     if (!geo) return [];
@@ -896,7 +904,12 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
       if (curated.length >= 40) break;
     }
 
-    if (curated.length > 0) cache.set(key, { at: Date.now(), places: curated });
+    // Si Wikidata n'a rien donné (échec/throttle), le classement par notoriété est
+    // dégradé → cache court (15 min) pour réessayer bientôt, au lieu de figer 6 h.
+    if (curated.length > 0) {
+      const ttl = wd.length > 0 ? CACHE_TTL : CACHE_TTL_DEGRADED;
+      cache.set(key, { at: Date.now(), places: curated, ttl });
+    }
     return curated;
   } catch {
     return [];
