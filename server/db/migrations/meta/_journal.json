@@ -43,6 +43,13 @@
       "when": 1780577959473,
       "tag": "0005_lying_tempest",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780648397746,
+      "tag": "0006_nasty_piledriver",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   Sparkles,
   AlertCircle,
@@ -63,6 +63,9 @@ export default function ItineraryTab() {
 
   // Compteur de rafraîchissement : réorganise visiblement la liste à chaque clic.
   const [refreshTick, setRefreshTick] = useState(0);
+  // Index de la 1re nouvelle suggestion à révéler après « Voir d'autres idées »
+  // (pour faire défiler l'utilisateur jusqu'à elle).
+  const [scrollToIdx, setScrollToIdx] = useState<number | null>(null);
   // Vue « Mes favoris » (activités que j'ai aimées/votées).
   const [showFavorites, setShowFavorites] = useState(false);
   // Filtre par catégorie réelle (null/"all" = toutes).
@@ -234,12 +237,25 @@ export default function ItineraryTab() {
   };
   const listToRender = showFavorites ? favorites : rotate(suggestionPool, refreshTick * 3);
 
-  // « Voir d'autres idées » : va chercher la page SUIVANTE (sans supprimer les
-  // anciennes) ; si le catalogue est épuisé, on se contente de réorganiser.
+  // « Voir d'autres idées » : va chercher la page SUIVANTE. Les nouvelles
+  // s'ajoutent EN DESSOUS (ordre du + au - connu préservé) et on fait défiler
+  // l'utilisateur jusqu'à la 1re nouveauté. Catalogue épuisé → simple réorganisation.
   const seeMore = async () => {
+    const firstNew = suggestionPool.length;
     const added = await handleMoreSuggestions();
-    if (added === 0) setRefreshTick((t) => t + 1);
+    if (added > 0) setScrollToIdx(firstNew);
+    else setRefreshTick((t) => t + 1);
   };
+
+  // Défile en douceur jusqu'à la 1re nouvelle suggestion une fois qu'elle est rendue.
+  useEffect(() => {
+    if (scrollToIdx == null) return;
+    const el = document.getElementById(`sugg-card-${scrollToIdx}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setScrollToIdx(null);
+    }
+  }, [scrollToIdx, suggestionPool.length]);
 
   // Emoji de catégorie réelle (tag OSM) pour le badge des cartes.
   const CATEGORY_EMOJI: Record<string, string> = {
@@ -328,13 +344,13 @@ export default function ItineraryTab() {
                     : "🎉 Toutes les idées sont déjà au programme. Cliquez sur « Voir d'autres idées » pour en découvrir d'autres."}
                 </div>
               )}
-              {listToRender.map((act) => {
+              {listToRender.map((act, idx) => {
                   const isVotedByCurrent = act.votes.includes(currentMember.id);
                   const totalVotes = act.votes.length;
                   const schedule = findSchedule(act.name);
 
                   return (
-                    <div key={act.id} className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2 hover:border-indigo-500/30 transition-all group">
+                    <div key={act.id} id={`sugg-card-${idx}`} className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2 hover:border-indigo-500/30 transition-all group scroll-mt-4">
                       {/* Carte horizontale : vignette carrée (photo réelle, peu coupée) + contenu */}
                       <div className="flex gap-3">
                         {act.imageUrl && (
@@ -343,7 +359,7 @@ export default function ItineraryTab() {
                               src={act.imageUrl}
                               alt={act.name}
                               loading="lazy"
-                              className="w-24 h-24 sm:w-28 sm:h-28 object-cover object-center rounded-xl border border-white/10"
+                              className="w-32 h-32 sm:w-40 sm:h-40 object-cover object-center rounded-xl border border-white/10"
                               onError={(e) => {
                                 (e.currentTarget as HTMLImageElement).style.display = "none";
                               }}

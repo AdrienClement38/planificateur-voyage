@@ -122,6 +122,7 @@ export const activities = pgTable("activities", {
   duration: text("duration"),
   bookingUrl: text("booking_url"),
   imageUrl: text("image_url"), // photo réelle si la source en fournit une, sinon null
+  createdAt: timestamp("created_at").notNull().defaultNow(), // ordre d'ajout (pertinence)
 }, (t) => [index("activities_trip_idx").on(t.tripId)]);
 
 export const activityVotes = pgTable(
