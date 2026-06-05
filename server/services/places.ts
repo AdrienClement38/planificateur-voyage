@@ -399,7 +399,7 @@ async function discoverWikidata(
     `?item wikibase:sitelinks ?sitelinks. FILTER(?sitelinks >= 20)` +
     `?item wdt:P31 ?type. ?item rdfs:label ?label. FILTER(lang(?label) = "fr")` +
     `OPTIONAL { ?item wdt:P18 ?image. }` +
-    `} ORDER BY DESC(?sitelinks) LIMIT 150`;
+    `} ORDER BY DESC(?sitelinks) LIMIT 260`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
   const data = (await fetchJson(url, 10000)) as {
     results?: {
@@ -442,7 +442,7 @@ async function discoverWikidata(
   const candidates = [...byId.entries()]
     .filter(([, a]) => ![...a.types].some((t) => WD_BAD_TYPES.has(t)) && a.label.toLowerCase() !== destLow)
     .sort((a, b) => b[1].sitelinks - a[1].sitelinks)
-    .slice(0, 30);
+    .slice(0, 48);
   if (candidates.length === 0) return [];
 
   // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
@@ -464,7 +464,7 @@ async function discoverWikidata(
       wikiTitle: a.label,
       imageUrl: a.image ? a.image.replace(/^http:/, "https:") + "?width=800" : undefined,
     });
-    if (out.length >= 25) break;
+    if (out.length >= 45) break;
   }
   return out;
 }
@@ -878,7 +878,7 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const curated: PlaceActivity[] = [];
     for (const p of pool) {
       perCat[p.category] = (perCat[p.category] ?? 0) + 1;
-      if (perCat[p.category] > 12) continue;
+      if (perCat[p.category] > 20) continue; // plafond souple : laisse les villes mono-thème aller en profondeur
       curated.push(p);
       if (curated.length >= 40) break;
     }

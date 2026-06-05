@@ -62,7 +62,7 @@ export default function ItineraryTab() {
   const [editError, setEditError] = useState("");
 
   // Compteur de rafraîchissement : réorganise visiblement la liste à chaque clic.
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [allLoaded, setAllLoaded] = useState(false);
   // Index de la 1re nouvelle suggestion à révéler après « Voir d'autres idées »
   // (pour faire défiler l'utilisateur jusqu'à elle).
   const [scrollToIdx, setScrollToIdx] = useState<number | null>(null);
@@ -229,22 +229,22 @@ export default function ItineraryTab() {
   // Mes favoris = activités que j'ai aimées (vote), planifiées ou non.
   const favorites = activeTrip.activities.filter((a) => a.votes.includes(currentMember.id));
 
-  // Rafraîchit visiblement l'ordre de la liste (rotation déterministe par tick).
-  const rotate = <T,>(arr: T[], by: number): T[] => {
-    if (arr.length === 0) return arr;
-    const k = (by % arr.length + arr.length) % arr.length;
-    return [...arr.slice(k), ...arr.slice(0, k)];
-  };
-  const listToRender = showFavorites ? favorites : rotate(suggestionPool, refreshTick * 3);
+  // Ordre STABLE (du + au - connu) : surtout pas de rotation, qui casserait
+  // l'ordre de notoriété quand on charge d'autres idées.
+  const listToRender = showFavorites ? favorites : suggestionPool;
 
   // « Voir d'autres idées » : va chercher la page SUIVANTE. Les nouvelles
-  // s'ajoutent EN DESSOUS (ordre du + au - connu préservé) et on fait défiler
-  // l'utilisateur jusqu'à la 1re nouveauté. Catalogue épuisé → simple réorganisation.
+  // s'ajoutent EN DESSOUS (ordre préservé) et on fait défiler jusqu'à la 1re
+  // nouveauté. Si le catalogue est épuisé, on le signale sans toucher à la liste.
   const seeMore = async () => {
     const firstNew = suggestionPool.length;
     const added = await handleMoreSuggestions();
-    if (added > 0) setScrollToIdx(firstNew);
-    else setRefreshTick((t) => t + 1);
+    if (added > 0) {
+      setScrollToIdx(firstNew);
+      setAllLoaded(false);
+    } else {
+      setAllLoaded(true);
+    }
   };
 
   // Défile en douceur jusqu'à la 1re nouvelle suggestion une fois qu'elle est rendue.
@@ -256,6 +256,11 @@ export default function ItineraryTab() {
       setScrollToIdx(null);
     }
   }, [scrollToIdx, suggestionPool.length]);
+
+  // Repart à zéro (« tout chargé ») quand la destination change.
+  useEffect(() => {
+    setAllLoaded(false);
+  }, [activeTrip.selectedDestination]);
 
   // Emoji de catégorie réelle (tag OSM) pour le badge des cartes.
   const CATEGORY_EMOJI: Record<string, string> = {
@@ -588,14 +593,16 @@ export default function ItineraryTab() {
               {!showFavorites && activeTrip.selectedDestination && (
                 <button
                   onClick={seeMore}
-                  disabled={isGenerating}
-                  className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] font-bold py-2.5 rounded-xl transition cursor-pointer"
-                  title="Rechercher les vrais lieux de la destination (OpenStreetMap + Wikipédia)"
+                  disabled={isGenerating || allLoaded}
+                  className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:hover:bg-indigo-600 text-white text-[11px] font-bold py-2.5 rounded-xl transition cursor-pointer disabled:cursor-default"
+                  title="Charger d'autres vrais lieux de la destination (les nouveaux s'ajoutent en dessous)"
                 >
                   {isGenerating ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Recherche en cours…
                     </>
+                  ) : allLoaded ? (
+                    <>✓ Toutes les pépites disponibles sont affichées</>
                   ) : (
                     <>
                       <RefreshCw className="w-3.5 h-3.5" /> Voir d'autres idées
