@@ -51,7 +51,7 @@ export async function loadTripAggregate(tripId: string): Promise<Trip | null> {
         .select()
         .from(activities)
         .where(eq(activities.tripId, tripId))
-        .orderBy(asc(activities.createdAt)),
+        .orderBy(asc(activities.sortRank), asc(activities.createdAt)),
       db
         .select()
         .from(itineraryDays)

@@ -50,6 +50,13 @@
       "when": 1780648397746,
       "tag": "0006_nasty_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780670314841,
+      "tag": "0007_talented_masked_marvel",
+      "breakpoints": true
     }
   ]
 }

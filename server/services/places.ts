@@ -388,15 +388,24 @@ async function wikidataPlaceFilter(qids: string[]): Promise<Set<string>> {
   return set;
 }
 
-async function discoverWikidata(
+interface WdAgg {
+  label: string;
+  sitelinks: number;
+  types: Set<string>;
+  image?: string;
+}
+
+// Interroge Wikidata autour d'un point, au-dessus d'un seuil de notoriété.
+async function wikidataAround(
   lat: number,
   lon: number,
-  destination: string,
-): Promise<PlaceActivity[]> {
+  minSitelinks: number,
+  radiusKm: number,
+): Promise<Map<string, WdAgg>> {
   const sparql =
     `SELECT ?item ?label ?sitelinks ?type ?image WHERE {` +
-    `SERVICE wikibase:around { ?item wdt:P625 ?c. bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral. bd:serviceParam wikibase:radius "6". }` +
-    `?item wikibase:sitelinks ?sitelinks. FILTER(?sitelinks >= 20)` +
+    `SERVICE wikibase:around { ?item wdt:P625 ?c. bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral. bd:serviceParam wikibase:radius "${radiusKm}". }` +
+    `?item wikibase:sitelinks ?sitelinks. FILTER(?sitelinks >= ${minSitelinks})` +
     `?item wdt:P31 ?type. ?item rdfs:label ?label. FILTER(lang(?label) = "fr")` +
     `OPTIONAL { ?item wdt:P18 ?image. }` +
     `} ORDER BY DESC(?sitelinks) LIMIT 260`;
@@ -412,17 +421,8 @@ async function discoverWikidata(
       }>;
     };
   } | null;
-  const rows = data?.results?.bindings ?? [];
-  if (rows.length === 0) return [];
-
-  interface Agg {
-    label: string;
-    sitelinks: number;
-    types: Set<string>;
-    image?: string;
-  }
-  const byId = new Map<string, Agg>();
-  for (const b of rows) {
+  const byId = new Map<string, WdAgg>();
+  for (const b of data?.results?.bindings ?? []) {
     const id = b.item?.value?.split("/").pop();
     const label = b.label?.value;
     if (!id || !label) continue;
@@ -435,6 +435,19 @@ async function discoverWikidata(
     if (ty) a.types.add(ty);
     if (!a.image && b.image?.value) a.image = b.image.value;
   }
+  return byId;
+}
+
+async function discoverWikidata(
+  lat: number,
+  lon: number,
+  destination: string,
+): Promise<PlaceActivity[]> {
+  // Seuil ≥20 langues : rapide même en mégapole (sous 20, la requête explose en
+  // densité — Paris passait de 1 s à 8 s+). Les villes petites/moyennes sont de
+  // toute façon bien couvertes par OSM + Wikipédia + Wikivoyage.
+  const byId = await wikidataAround(lat, lon, 20, 6);
+  if (byId.size === 0) return [];
 
   const destLow = destination.toLowerCase().split(/[,(]/)[0].trim();
   // Candidats triés par notoriété, hors types évidents non visitables et hors

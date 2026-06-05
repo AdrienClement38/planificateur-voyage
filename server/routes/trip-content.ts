@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, max } from "drizzle-orm";
 import { db } from "../db/client";
 import {
   tripMembers,
@@ -177,9 +177,17 @@ router.post("/:id/activities/bulk", requireMembership, async (req, res) => {
     return;
   }
   if (parsed.data.length > 0) {
+    // Rang de popularité MONOTONE : on ajoute à la suite des existants, en
+    // conservant l'ordre du lot (déjà classé du + au - pertinent). Garantit
+    // l'ordre d'affichage, même après rechargement (tri par sort_rank).
+    const [agg] = await db
+      .select({ m: max(activities.sortRank) })
+      .from(activities)
+      .where(eq(activities.tripId, req.params.id));
+    const base = (agg?.m ?? -1) + 1;
     await db
       .insert(activities)
-      .values(parsed.data.map((a) => ({ tripId: req.params.id, ...a })));
+      .values(parsed.data.map((a, i) => ({ tripId: req.params.id, ...a, sortRank: base + i })));
   }
   await respondTrip(res, req.params.id);
 });
