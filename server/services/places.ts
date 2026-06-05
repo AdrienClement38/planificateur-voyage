@@ -347,10 +347,11 @@ const WD_BAD_TYPES = new Set([
   "Q36784", "Q3551775", "Q4671277", "Q15893266",
   "Q391009", "Q474717", "Q1896989", "Q2311325",
   "Q1063239", "Q1147274", "Q1414472", "Q16567729",
-  // Œuvres d'art (on visite le musée, pas l'œuvre) et prélatures religieuses.
-  "Q3305213", "Q860861", "Q22669139", "Q838948", "Q4502142", "Q179700", "Q250867",
   // Entreprises/sociétés (le siège est un bâtiment, mais ça ne se « visite » pas).
   "Q891723", "Q6881511", "Q783794", "Q4830453",
+  // NB : on ne bannit PLUS les types « œuvre d'art » (sculpture/peinture/fresque) :
+  // ça excluait à tort Trevi (site touristique ET sculpture). C'est le filtre
+  // « lieu » (wikidataPlaceFilter) qui écarte les œuvres pures non visitables.
 ]);
 
 // Super-types « lieu » (allow-list) : un candidat n'est gardé que s'il est
