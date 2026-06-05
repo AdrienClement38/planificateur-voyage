@@ -463,7 +463,7 @@ async function discoverWikidata(
   const candidates = [...byId.entries()]
     .filter(([, a]) => ![...a.types].some((t) => WD_BAD_TYPES.has(t)) && a.label.toLowerCase() !== destLow)
     .sort((a, b) => b[1].sitelinks - a[1].sitelinks)
-    .slice(0, 48);
+    .slice(0, 56);
   if (candidates.length === 0) return [];
 
   // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
@@ -485,7 +485,7 @@ async function discoverWikidata(
       wikiTitle: a.label,
       imageUrl: a.image ? a.image.replace(/^http:/, "https:") + "?width=800" : undefined,
     });
-    if (out.length >= 45) break;
+    if (out.length >= 55) break;
   }
   return out;
 }
@@ -734,7 +734,7 @@ const CACHE_TTL_DEGRADED = 15 * 60 * 1000; // 15 min si Wikidata a échoué (aut
 // administratives (province, métropole, région…) et événements (festival,
 // championnat…) — ce ne sont pas des lieux à visiter.
 const NOISE_BLOCK =
-  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|universit[ée]|saint-si[èe]ge|ordre souverain|pr[ée]lature|convention|trait[ée] de\b|\baccord\b|conf[ée]rence|protocole|\bpacte\b|\bann[ée]e des\b|\bm[ée]tro\b|organisation|\bagence\b|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
+  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|universit[ée]|saint-si[èe]ge|ordre souverain|pr[ée]lature|convention|trait[ée] de\b|\baccord\b|conf[ée]rence|protocole|\bpacte\b|\bann[ée]e des\b|\bm[ée]tro\b|organisation|\bagence\b|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bop[ée]ration\b|\binvasion\b|\boffensive\b|bombardement|\bbataille\b|massacre|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
 
 /**
  * Clé de dédoublonnage : minuscule, sans accents/ponctuation, sans le suffixe
@@ -865,7 +865,7 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
       if (!k || seen.has(k)) continue;
       seen.add(k);
       merged.push(p);
-      if (merged.length >= 55) break;
+      if (merged.length >= 70) break;
     }
 
     // Enrichit avec photos + intros libres (Wikimedia). La photo devient le signal
@@ -902,7 +902,7 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
       perCat[p.category] = (perCat[p.category] ?? 0) + 1;
       if (perCat[p.category] > 20) continue; // plafond souple : laisse les villes mono-thème aller en profondeur
       curated.push(p);
-      if (curated.length >= 40) break;
+      if (curated.length >= 50) break;
     }
 
     // Si Wikidata n'a rien donné (échec/throttle), le classement par notoriété est
