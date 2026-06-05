@@ -881,10 +881,12 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     const admissible = (p: PlaceActivity) =>
       !!p.imageUrl || officialLink(p) || (p.fame ?? 0) >= 8;
 
-    // Classement dominé par la NOTORIÉTÉ (langlinks) : le Colisée passe devant une
-    // œuvre obscure. Bonus photo (peps visuel) et lien officiel (expérience réelle).
-    const score = (p: PlaceActivity) =>
-      (p.fame ?? 0) + (p.imageUrl ? 40 : 0) + (officialLink(p) ? 20 : 0);
+    // Classement par NOTORIÉTÉ pure (langlinks), avec un simple bonus photo pour
+    // faire remonter le visuel à notoriété égale. PAS de bonus « lien officiel » :
+    // il biaisait le tri selon la source (Wikivoyage a des URL, Wikidata renvoie
+    // vers Maps) → un musée peu connu passait devant l'Opéra. Le lien officiel
+    // reste pris en compte pour l'ADMISSION (admissible), pas pour le rang.
+    const score = (p: PlaceActivity) => (p.fame ?? 0) + (p.imageUrl ? 40 : 0);
 
     const ranked = merged.filter(admissible).sort((a, b) => score(b) - score(a));
 
