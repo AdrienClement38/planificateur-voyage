@@ -22,7 +22,7 @@ export interface PlaceActivity {
   description: string;
   category: Cat;
   duration: string;
-  /** Lien réel (site officiel, Google Maps, ou page de réservation), "" si aucun. */
+  /** Lien « Voir le lieu » : fiche Google Maps du lieu (uniforme, toutes sources). */
   bookingUrl: string;
   /** Source réelle : "OpenStreetMap" | "Wikivoyage" | "Wikipédia" | "Foursquare". */
   provider: string;
@@ -117,10 +117,8 @@ function classifyTags(tags: Record<string, string>): { category: Cat; duration: 
   return { category: "Visite", duration: "1h30" };
 }
 
-/** Lien : site officiel (OSM) sinon la fiche Google Maps du lieu (utile et moderne). */
-function placeLink(tags: Record<string, string>, name: string, dest: string): string {
-  const site = tags.website || tags["contact:website"] || tags.url;
-  if (site && /^https?:\/\//i.test(site)) return site.split(";")[0].trim();
+/** Lien « Voir le lieu » : TOUJOURS une fiche Google Maps (uniforme, toutes sources). */
+function mapsLink(name: string, dest: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${dest}`)}`;
 }
 
@@ -256,7 +254,7 @@ async function discoverOverpass(
       description: (extract || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
       category,
       duration,
-      bookingUrl: placeLink(e.tags, e.name, destination),
+      bookingUrl: mapsLink(e.name, destination),
       provider: "OpenStreetMap",
       wikiTitle: e.wiki,
     };
@@ -316,7 +314,7 @@ async function discoverWikipedia(
       description: (extracts[title] || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
       category,
       duration,
-      bookingUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${title}, ${destination}`)}`,
+      bookingUrl: mapsLink(title, destination),
       provider: "Wikipédia",
     };
   });
@@ -479,7 +477,7 @@ async function discoverWikidata(
       description: "",
       category,
       duration,
-      bookingUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${a.label}, ${destination}`)}`,
+      bookingUrl: mapsLink(a.label, destination),
       provider: "Wikidata",
       fame: a.sitelinks,
       wikiTitle: a.label,
@@ -613,15 +611,12 @@ async function discoverWikivoyage(destination: string): Promise<PlaceActivity[]>
       const guess = classifyTitle(name);
       // {{faire}} = activité → Loisir par défaut si le nom ne dit rien de précis.
       const generic = guess.category === "Visite";
-      const url = (f["url"] || "").trim();
       out.push({
         name,
         description: (stripWiki(f["description"] || "") || stripWiki(f["adresse"] || "") || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
         category: isActivity && generic ? "Loisir" : guess.category,
         duration: isActivity && generic ? "demi-journée" : guess.duration,
-        bookingUrl: /^https?:\/\//i.test(url)
-          ? url.split(/\s/)[0]
-          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${destination}`)}`,
+        bookingUrl: mapsLink(name, destination),
         provider: "Wikivoyage",
         wikiTitle: stripWiki(f["wikipédia"] || f["wikipedia"] || "") || undefined,
       });
@@ -709,10 +704,7 @@ async function discoverFoursquare(
         description: (catName || p.location?.formatted_address || `Lieu réel à ${destination}.`).slice(0, 240),
         category,
         duration: category === "Bien-être" ? "demi-journée" : "1h30",
-        bookingUrl:
-          p.website && /^https?:\/\//i.test(p.website)
-            ? p.website
-            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${p.name}, ${destination}`)}`,
+        bookingUrl: mapsLink(p.name, destination),
         provider: "Foursquare",
       });
     }
@@ -872,26 +864,16 @@ export async function fetchPlaceActivities(destination: string): Promise<PlaceAc
     // de qualité : un lieu iconique en a une, le remplissage fade non.
     await enrichWikiMedia(merged);
 
-    // CURATION « peps ou rien » : on ne garde que ce qui fait envie. Critère
-    // d'admission : une VRAIE photo, OU un VRAI lien officiel (≠ recherche Maps),
-    // OU une vraie notoriété (présent dans ≥8 Wikipédia). Le reste = remplissage
-    // fade, écarté. Mieux vaut peu de pépites que des suggestions décevantes.
-    const officialLink = (p: PlaceActivity) =>
-      !!p.bookingUrl && !/google\.[a-z.]+\/maps/i.test(p.bookingUrl);
-    const admissible = (p: PlaceActivity) =>
-      !!p.imageUrl || officialLink(p) || (p.fame ?? 0) >= 8;
+    // CURATION « peps ou rien » : admis si une VRAIE photo OU une vraie notoriété
+    // (présent dans ≥8 Wikipédia). Le reste = remplissage fade, écarté.
+    const admissible = (p: PlaceActivity) => !!p.imageUrl || (p.fame ?? 0) >= 8;
 
-    // Classement par NOTORIÉTÉ pure (langlinks), avec un simple bonus photo pour
-    // faire remonter le visuel à notoriété égale. PAS de bonus « lien officiel » :
-    // il biaisait le tri selon la source (Wikivoyage a des URL, Wikidata renvoie
-    // vers Maps) → un musée peu connu passait devant l'Opéra. Le lien officiel
-    // reste pris en compte pour l'ADMISSION (admissible), pas pour le rang.
-    const score = (p: PlaceActivity) => (p.fame ?? 0) + (p.imageUrl ? 40 : 0);
-
-    const ranked = merged.filter(admissible).sort((a, b) => score(b) - score(a));
+    // Classement par NOTORIÉTÉ PURE (nombre de versions Wikipédia) : le lieu connu
+    // passe devant l'inconnu, un point c'est tout. AUCUN autre facteur dans le rang.
+    const ranked = merged.filter(admissible).sort((a, b) => (b.fame ?? 0) - (a.fame ?? 0));
 
     // Si on a assez de lieux AVEC photo, on ne garde QUE ceux-là (peps visuel,
-    // zéro carte fade). Sinon on complète avec les expériences à lien officiel.
+    // zéro carte fade). Sinon on complète avec les moins illustrés mais notables.
     const withPhoto = ranked.filter((p) => p.imageUrl);
     const pool = withPhoto.length >= 5 ? withPhoto : ranked;
 
