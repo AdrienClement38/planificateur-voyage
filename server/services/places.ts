@@ -379,7 +379,15 @@ async function wikidataPlaceFilter(qids: string[]): Promise<Set<string>> {
   const values = qids.map((q) => `wd:${q}`).join(" ");
   const sparql =
     `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
-    `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } }`;
+    `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } ` +
+    // Purge : cours d'eau (rivières) et chaînes/massifs de montagnes — ce ne sont
+    // pas des « sorties » (Doire baltée, Alpes occidentales, massif du Mont-Blanc).
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q46831 } } ` +
+    // Purge : commune/ville SÉPARÉE = zone habitée (Q486972) qui n'est PAS un
+    // quartier → écarte Courmayeur près de Chamonix, MAIS garde les quartiers
+    // touristiques (Montmartre, Trastevere, eux AUSSI « quartiers » Q123705/Q2983893).
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* wd:Q486972. ` +
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?q. VALUES ?q { wd:Q123705 wd:Q2983893 } } } }`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
   // 14 s : on filtre désormais jusqu'à 220 candidats (mégapoles) — la traversée
   // P279* sur autant d'items demande plus de marge que les 8 s d'origine.
@@ -450,6 +458,94 @@ async function wikidataAround(
   return byId;
 }
 
+// ---- Notoriété TOURISTIQUE : vraies vues Wikipédia (≠ nombre de langues) ----
+
+/** Vues Wikipédia (60 derniers jours) pour des titres d'articles, par langue. */
+async function wikiPageviews(lang: string, titles: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (let i = 0; i < titles.length; i += 50) {
+    const batch = titles.slice(i, i + 50);
+    const byTitle = new Map<string, number>();
+    const norm = new Map<string, string>();
+    // L'API ne calcule les vues que pour ~15 titres par réponse puis pagine via
+    // `continue` (pvipcontinue) : on suit la continuation jusqu'à tout obtenir.
+    let cont: Record<string, string> | null = null;
+    let guard = 0;
+    do {
+      const contQs = cont
+        ? Object.entries(cont)
+            .map(([k, v]) => `&${k}=${encodeURIComponent(v)}`)
+            .join("")
+        : "";
+      const url =
+        `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2` +
+        `&prop=pageviews&pvipdays=60&titles=${encodeURIComponent(batch.join("|"))}${contQs}`;
+      const data = (await fetchJson(url, 8000)) as {
+        continue?: Record<string, string>;
+        query?: {
+          normalized?: Array<{ from?: string; to?: string }>;
+          pages?: Array<{ title?: string; pageviews?: Record<string, number | null> }>;
+        };
+      } | null;
+      for (const pg of data?.query?.pages ?? []) {
+        if (!pg.title) continue;
+        let s = 0;
+        for (const v of Object.values(pg.pageviews ?? {})) s += v ?? 0;
+        if (s > 0) byTitle.set(pg.title, (byTitle.get(pg.title) ?? 0) + s);
+      }
+      for (const n of data?.query?.normalized ?? []) if (n.from && n.to) norm.set(n.from, n.to);
+      cont = data?.continue ?? null;
+    } while (cont && ++guard < 12);
+    for (const t of batch) out.set(t, byTitle.get(norm.get(t) ?? t) ?? 0);
+  }
+  return out;
+}
+
+/**
+ * Pour des Q-ids, somme des vues Wikipédia FR + EN via les titres CANONIQUES des
+ * sitelinks (zéro redirection). Signal de notoriété réelle : ce que les gens
+ * consultent vraiment — contrairement au nombre de langues, qui sur-classe
+ * communes/rivières/chaînes. Tolérant à l'échec (Map partielle → repli sitelinks).
+ */
+async function fetchPopularity(qids: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (qids.length === 0) return result;
+  const values = qids.map((q) => `wd:${q}`).join(" ");
+  const sparql =
+    `SELECT ?item ?frTitle ?enTitle WHERE { VALUES ?item { ${values} } ` +
+    `OPTIONAL { ?fa schema:about ?item; schema:isPartOf <https://fr.wikipedia.org/>; schema:name ?frTitle. } ` +
+    `OPTIONAL { ?ea schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enTitle. } }`;
+  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+  const data = (await fetchJson(url, 12000)) as {
+    results?: {
+      bindings?: Array<{
+        item?: { value?: string };
+        frTitle?: { value?: string };
+        enTitle?: { value?: string };
+      }>;
+    };
+  } | null;
+  const frOf = new Map<string, string>();
+  const enOf = new Map<string, string>();
+  for (const b of data?.results?.bindings ?? []) {
+    const qid = b.item?.value?.split("/").pop();
+    if (!qid) continue;
+    if (b.frTitle?.value) frOf.set(qid, b.frTitle.value);
+    if (b.enTitle?.value) enOf.set(qid, b.enTitle.value);
+  }
+  const [frViews, enViews] = await Promise.all([
+    wikiPageviews("fr", [...new Set(frOf.values())]),
+    wikiPageviews("en", [...new Set(enOf.values())]),
+  ]);
+  for (const qid of qids) {
+    const v =
+      (frOf.has(qid) ? frViews.get(frOf.get(qid)!) ?? 0 : 0) +
+      (enOf.has(qid) ? enViews.get(enOf.get(qid)!) ?? 0 : 0);
+    if (v > 0) result.set(qid, v);
+  }
+  return result;
+}
+
 async function discoverWikidata(
   lat: number,
   lon: number,
@@ -481,6 +577,7 @@ async function discoverWikidata(
   const placeIds = await wikidataPlaceFilter(candidates.map(([id]) => id));
 
   const out: PlaceActivity[] = [];
+  const outIds: string[] = [];
   for (const [id, a] of candidates) {
     if (placeIds.size > 0 && !placeIds.has(id)) continue; // pas un lieu → écarté
     const { category, duration } = classifyTitle(a.label);
@@ -495,8 +592,20 @@ async function discoverWikidata(
       wikiTitle: a.label,
       imageUrl: a.image ? a.image.replace(/^http:/, "https:") + "?width=800" : undefined,
     });
+    outIds.push(id);
     if (out.length >= 55) break;
   }
+
+  // Re-classement par notoriété TOURISTIQUE : on remplace le tri par sitelinks
+  // (nombre de langues, qui sur-classe communes/rivières) par les VRAIES vues
+  // Wikipédia FR+EN. Repli sur les sitelinks pour les rares lieux sans article
+  // consulté. C'est ce tri (via `fame`) que la curation finale réutilise.
+  const popularity = await fetchPopularity(outIds);
+  out.forEach((p, i) => {
+    const views = popularity.get(outIds[i]);
+    if (views && views > 0) p.fame = views;
+  });
+  out.sort((a, b) => (b.fame ?? 0) - (a.fame ?? 0));
   return out;
 }
 
