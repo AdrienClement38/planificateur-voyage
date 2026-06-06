@@ -11,6 +11,7 @@ import {
   Check,
   RefreshCw,
   ChevronDown,
+  X,
 } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
 import {
@@ -23,12 +24,82 @@ import {
 import type { ActivityProposal } from "../types";
 import { fetchPlaceHighlightsBatch, type PlaceHighlight } from "../lib/api";
 
+/** Majuscule à la 1re lettre (les libellés Wikidata sont souvent en minuscule). */
+const cap = (s: string) => (s ? s.charAt(0).toLocaleUpperCase("fr-FR") + s.slice(1) : s);
+
+/** Version « grande » d'une image Commons (remplace ?width=N par une large). */
+const fullImage = (url: string) => url.replace(/\?width=\d+/, "?width=1400");
+
+/** Donnée d'une image ouverte en plein écran. */
+interface LightboxData {
+  url: string;
+  caption: string;
+  wikiUrl?: string;
+}
+
+/** Visionneuse plein écran : photo complète (non rognée), fermable au clic/Échap. */
+function Lightbox({ data, onClose }: { data: LightboxData | null; onClose: () => void }) {
+  useEffect(() => {
+    if (!data) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [data, onClose]);
+
+  if (!data) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="relative flex flex-col items-center max-w-5xl" onClick={(e) => e.stopPropagation()}>
+        <img
+          src={data.url}
+          alt={data.caption}
+          className="max-w-full max-h-[82vh] object-contain rounded-xl shadow-2xl"
+        />
+        <div className="mt-3 text-center">
+          <p className="text-white text-sm font-bold">{data.caption}</p>
+          {data.wikiUrl && (
+            <a
+              href={data.wikiUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-indigo-300 text-xs hover:text-indigo-200 hover:underline"
+            >
+              Voir sur Wikipédia ↗
+            </a>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute -top-3 -right-3 bg-white/15 hover:bg-white/25 text-white rounded-full p-1.5 transition cursor-pointer"
+          aria-label="Fermer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Volet « Œuvres à voir » d'un lieu. Reçoit les œuvres DÉJÀ chargées (en lot par
  * le parent) : n'affiche RIEN si le lieu n'a aucune œuvre notable → pas de bouton
- * inutile. Le déploiement est instantané (données déjà là).
+ * inutile. Cliquer une œuvre ouvre sa photo en grand.
  */
-function PlaceHighlights({ items }: { items: PlaceHighlight[] }) {
+function PlaceHighlights({
+  items,
+  onOpenImage,
+}: {
+  items: PlaceHighlight[];
+  onOpenImage: (data: LightboxData) => void;
+}) {
   const [open, setOpen] = useState(false);
   if (!items || items.length === 0) return null;
 
@@ -48,38 +119,52 @@ function PlaceHighlights({ items }: { items: PlaceHighlight[] }) {
 
       {open && (
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-          {items.map((it) => (
-            <a
-              key={it.name}
-              href={
-                it.wikiUrl ??
-                `https://fr.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(it.name)}`
-              }
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 w-24 group/hl"
-              title={it.name}
-            >
-              {it.imageUrl ? (
+          {items.map((it) => {
+            const label = cap(it.name);
+            return it.imageUrl ? (
+              <button
+                key={it.name}
+                type="button"
+                onClick={() =>
+                  onOpenImage({ url: fullImage(it.imageUrl!), caption: label, wikiUrl: it.wikiUrl })
+                }
+                className="shrink-0 w-24 group/hl text-left cursor-zoom-in"
+                title={`${label} — agrandir`}
+              >
                 <img
                   src={it.imageUrl}
-                  alt={it.name}
+                  alt={label}
                   loading="lazy"
                   className="w-24 h-24 object-cover rounded-lg border border-white/10 group-hover/hl:border-amber-400/40 transition"
                   onError={(e) => {
                     (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
                   }}
                 />
-              ) : (
+                <span className="block text-[9px] text-slate-300 leading-tight mt-1 line-clamp-2 group-hover/hl:text-amber-200">
+                  {label}
+                </span>
+              </button>
+            ) : (
+              <a
+                key={it.name}
+                href={
+                  it.wikiUrl ??
+                  `https://fr.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(it.name)}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 w-24 group/hl"
+                title={label}
+              >
                 <div className="w-24 h-24 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-2xl">
                   🎨
                 </div>
-              )}
-              <span className="block text-[9px] text-slate-300 leading-tight mt-1 line-clamp-2 group-hover/hl:text-amber-200">
-                {it.name}
-              </span>
-            </a>
-          ))}
+                <span className="block text-[9px] text-slate-300 leading-tight mt-1 line-clamp-2 group-hover/hl:text-amber-200">
+                  {label}
+                </span>
+              </a>
+            );
+          })}
         </div>
       )}
     </div>
@@ -304,6 +389,8 @@ export default function ItineraryTab() {
   // lieux (après « Voir d'autres idées »), et `n in highlights` mémorise aussi
   // les lieux sans œuvre (valeur []) pour ne pas les re-interroger.
   const [highlights, setHighlights] = useState<Record<string, PlaceHighlight[]>>({});
+  // Photo ouverte en plein écran (clic sur une vignette de lieu ou d'œuvre).
+  const [lightbox, setLightbox] = useState<LightboxData | null>(null);
   const highlightNamesKey = listToRender
     .filter((a) => a.category === "Culture" || a.category === "Visite")
     .map((a) => a.name)
@@ -452,7 +539,11 @@ export default function ItineraryTab() {
                               src={act.imageUrl}
                               alt={act.name}
                               loading="lazy"
-                              className="w-32 h-32 sm:w-40 sm:h-40 object-cover object-center rounded-xl border border-white/10"
+                              onClick={() =>
+                                act.imageUrl &&
+                                setLightbox({ url: fullImage(act.imageUrl), caption: cap(act.name) })
+                              }
+                              className="w-32 h-32 sm:w-40 sm:h-40 object-cover object-center rounded-xl border border-white/10 cursor-zoom-in hover:border-indigo-400/40 transition"
                               onError={(e) => {
                                 (e.currentTarget as HTMLImageElement).style.display = "none";
                               }}
@@ -466,7 +557,7 @@ export default function ItineraryTab() {
                         )}
                         <div className="flex-1 min-w-0 space-y-1.5">
                           <div className="flex items-start justify-between gap-2">
-                            <h5 className="font-bold text-sm text-indigo-50 leading-snug">{act.name}</h5>
+                            <h5 className="font-bold text-sm text-indigo-50 leading-snug">{cap(act.name)}</h5>
                             {!act.imageUrl && act.cost > 0 && (
                               <span className="text-xs font-bold text-emerald-400 shrink-0 bg-emerald-950/60 border border-emerald-900/30 px-2 py-0.5 rounded">
                                 {act.cost}€
@@ -508,7 +599,7 @@ export default function ItineraryTab() {
                       </div>
 
                       {/* Œuvres majeures à voir (affiché seulement s'il y en a) */}
-                      <PlaceHighlights items={highlights[act.name] ?? []} />
+                      <PlaceHighlights items={highlights[act.name] ?? []} onOpenImage={setLightbox} />
 
                       <div className="flex items-center justify-end pt-1.5 border-t border-white/5">
                         {/* Activity Interactivity buttons: Vote and Schedule */}
@@ -969,6 +1060,8 @@ export default function ItineraryTab() {
           </form>
         </div>
       )}
+
+      <Lightbox data={lightbox} onClose={() => setLightbox(null)} />
     </div>
   );
 }
