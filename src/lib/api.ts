@@ -68,3 +68,31 @@ export async function suggestActivities(
 
   return res.json();
 }
+
+/** Une œuvre à voir dans un lieu (musée, chapelle…), renvoyée par l'API. */
+export interface PlaceHighlight {
+  name: string;
+  imageUrl?: string;
+  wikiUrl?: string;
+}
+
+/**
+ * Récupère les œuvres majeures à voir dans un lieu (via Wikidata, côté serveur).
+ * Tolérant à l'échec : renvoie `[]` plutôt que de lever — ce volet est un bonus,
+ * il ne doit jamais casser l'affichage de la carte.
+ */
+export async function fetchPlaceHighlights(
+  name: string,
+  signal?: AbortSignal,
+): Promise<PlaceHighlight[]> {
+  try {
+    const res = await fetch(apiUrl(`/api/place-highlights?name=${encodeURIComponent(name)}`), {
+      signal,
+    });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { highlights?: PlaceHighlight[] };
+    return body.highlights ?? [];
+  } catch {
+    return [];
+  }
+}

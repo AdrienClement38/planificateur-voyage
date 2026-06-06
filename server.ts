@@ -12,7 +12,7 @@ import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
 import { createServer } from "node:http";
 import { initRealtime } from "./server/realtime";
-import { fetchPlaceActivities } from "./server/services/places";
+import { fetchPlaceActivities, discoverPlaceHighlights } from "./server/services/places";
 
 dotenv.config();
 
@@ -535,6 +535,20 @@ app.post("/api/suggest-activities", async (req, res) => {
     return res.json(results);
   } catch (err: any) {
     return res.status(500).json({ error: "Échec de génération du parcours.", details: err?.message });
+  }
+});
+
+// Œuvres majeures à voir dans un lieu (musée, chapelle…) — données Wikidata,
+// récupérées à la demande (au déploiement du volet « À voir »). Public, en
+// lecture seule, mis en cache côté serveur.
+app.get("/api/place-highlights", async (req, res) => {
+  const name = typeof req.query.name === "string" ? req.query.name : "";
+  if (!name.trim()) return res.json({ highlights: [] });
+  try {
+    const highlights = await discoverPlaceHighlights(name);
+    return res.json({ highlights });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Échec.", details: err?.message });
   }
 });
 

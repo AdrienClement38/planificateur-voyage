@@ -347,6 +347,10 @@ const WD_BAD_TYPES = new Set([
   "Q1063239", "Q1147274", "Q1414472", "Q16567729",
   // Entreprises/sociétés (le siège est un bâtiment, mais ça ne se « visite » pas).
   "Q891723", "Q6881511", "Q783794", "Q4830453",
+  // Grandes surfaces (Carrefour…) : chaîne de magasins / chaîne de supermarchés.
+  // On NE bannit PAS « grand magasin » (Q216107) → Galeries Lafayette, Printemps,
+  // La Samaritaine (iconiques) restent.
+  "Q507619", "Q18043413",
   // NB : on ne bannit PLUS les types « œuvre d'art » (sculpture/peinture/fresque) :
   // ça excluait à tort Trevi (site touristique ET sculpture). C'est le filtre
   // « lieu » (wikidataPlaceFilter) qui écarte les œuvres pures non visitables.
@@ -494,6 +498,82 @@ async function discoverWikidata(
     if (out.length >= 55) break;
   }
   return out;
+}
+
+// ------------------------------------------------- Œuvres à voir dans un lieu (Wikidata)
+
+export interface PlaceHighlight {
+  /** Nom de l'œuvre (FR). */
+  name: string;
+  /** Photo réelle (Commons), sinon undefined. */
+  imageUrl?: string;
+  /** Article Wikipédia FR de l'œuvre, sinon undefined. */
+  wikiUrl?: string;
+}
+
+// Types « œuvre d'art » acceptés (peinture, fresque, sculpture, statue, œuvre
+// d'art, œuvre visuelle). Liste DIRECTE (pas de P279*) = requête rapide.
+const WD_ART_TYPES = [
+  "wd:Q3305213", "wd:Q22669139", "wd:Q860861", "wd:Q179700", "wd:Q838948", "wd:Q4502142",
+];
+
+const highlightsCache = new Map<string, { at: number; items: PlaceHighlight[]; ttl: number }>();
+const HL_TTL = 6 * 60 * 60 * 1000; // 6 h
+const HL_TTL_EMPTY = 30 * 60 * 1000; // 30 min si vide/échec (auto-réparation)
+
+/**
+ * Œuvres majeures à voir DANS un lieu (musée, chapelle, cathédrale…), classées
+ * par notoriété. S'appuie sur Wikidata : une œuvre déclare son lieu via P276
+ * (emplacement) ou P195 (collection) — 100 % données réelles, rien d'inventé.
+ * Renvoie [] si le lieu n'a aucune œuvre référencée (cas le plus fréquent).
+ */
+export async function discoverPlaceHighlights(placeName: string): Promise<PlaceHighlight[]> {
+  const key = placeName.trim().toLowerCase();
+  if (!key) return [];
+  const hit = highlightsCache.get(key);
+  if (hit && Date.now() - hit.at < hit.ttl) return hit.items;
+
+  // Littéral SPARQL sûr : on neutralise guillemets/antislash (l'apostrophe passe
+  // sans souci dans une chaîne "…"). Le label @fr est INDEXÉ → match rapide.
+  const lit = placeName.replace(/[\\"]/g, " ").trim();
+  const sparql =
+    `SELECT DISTINCT ?artLabel ?img ?article ?sl WHERE {` +
+    `?place rdfs:label "${lit}"@fr.` +
+    `?art (wdt:P276|wdt:P195) ?place.` +
+    `?art wdt:P31 ?t. VALUES ?t { ${WD_ART_TYPES.join(" ")} }` +
+    `?art wikibase:sitelinks ?sl.` +
+    `OPTIONAL { ?art wdt:P18 ?img. }` +
+    `OPTIONAL { ?article schema:about ?art; schema:isPartOf <https://fr.wikipedia.org/>. }` +
+    `?art rdfs:label ?artLabel. FILTER(lang(?artLabel) = "fr")` +
+    `} ORDER BY DESC(?sl) LIMIT 12`;
+  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+  const data = (await fetchJson(url, 9000)) as {
+    results?: {
+      bindings?: Array<{
+        artLabel?: { value?: string };
+        img?: { value?: string };
+        article?: { value?: string };
+      }>;
+    };
+  } | null;
+
+  const seen = new Set<string>();
+  const items: PlaceHighlight[] = [];
+  for (const b of data?.results?.bindings ?? []) {
+    const name = b.artLabel?.value?.trim();
+    if (!name) continue;
+    const k = name.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    items.push({
+      name,
+      imageUrl: b.img?.value ? b.img.value.replace(/^http:/, "https:") + "?width=320" : undefined,
+      wikiUrl: b.article?.value,
+    });
+    if (items.length >= 6) break;
+  }
+  highlightsCache.set(key, { at: Date.now(), items, ttl: items.length ? HL_TTL : HL_TTL_EMPTY });
+  return items;
 }
 
 // ------------------------------------------------- Source : Wikivoyage (guide open data)

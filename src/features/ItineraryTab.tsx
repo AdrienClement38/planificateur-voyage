@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Check,
   RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
 import {
@@ -20,6 +21,91 @@ import {
   addMinutesToTime,
 } from "../domain/schedule";
 import type { ActivityProposal } from "../types";
+import { fetchPlaceHighlights, type PlaceHighlight } from "../lib/api";
+
+/**
+ * Volet « Œuvres à voir » d'un lieu : se déplie à la demande et charge alors
+ * (une seule fois) les œuvres majeures via l'API Wikidata. Tolérant à l'absence
+ * d'œuvre (cas le plus fréquent) — affiche alors un message discret.
+ */
+function PlaceHighlights({ name }: { name: string }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<PlaceHighlight[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && items === null && !loading) {
+      setLoading(true);
+      fetchPlaceHighlights(name)
+        .then(setItems)
+        .finally(() => setLoading(false));
+    }
+  };
+
+  return (
+    <div className="pt-1.5 border-t border-white/5">
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex items-center gap-1 text-[10px] font-bold text-amber-300/80 hover:text-amber-200 transition cursor-pointer"
+        aria-expanded={open}
+      >
+        <Sparkles className="w-3 h-3" />
+        Œuvres à voir
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="mt-2">
+          {loading && <p className="text-[10px] text-slate-500">Recherche des œuvres…</p>}
+          {!loading && items && items.length === 0 && (
+            <p className="text-[10px] text-slate-500 italic">
+              Aucune œuvre majeure référencée pour ce lieu.
+            </p>
+          )}
+          {!loading && items && items.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {items.map((it) => (
+                <a
+                  key={it.name}
+                  href={
+                    it.wikiUrl ??
+                    `https://fr.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(it.name)}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 w-24 group/hl"
+                  title={it.name}
+                >
+                  {it.imageUrl ? (
+                    <img
+                      src={it.imageUrl}
+                      alt={it.name}
+                      loading="lazy"
+                      className="w-24 h-24 object-cover rounded-lg border border-white/10 group-hover/hl:border-amber-400/40 transition"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
+                      }}
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-2xl">
+                      🎨
+                    </div>
+                  )}
+                  <span className="block text-[9px] text-slate-300 leading-tight mt-1 line-clamp-2 group-hover/hl:text-amber-200">
+                    {it.name}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Onglet des suggestions d'activités et du programme journalier. */
 export default function ItineraryTab() {
@@ -418,6 +504,11 @@ export default function ItineraryTab() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Œuvres majeures à voir dans le lieu (musées, monuments…) */}
+                      {(act.category === "Culture" || act.category === "Visite") && (
+                        <PlaceHighlights name={act.name} />
+                      )}
 
                       <div className="flex items-center justify-end pt-1.5 border-t border-white/5">
                         {/* Activity Interactivity buttons: Vote and Schedule */}
