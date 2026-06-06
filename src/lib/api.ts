@@ -73,7 +73,6 @@ export async function suggestActivities(
 export interface PlaceHighlight {
   name: string;
   imageUrl?: string;
-  wikiUrl?: string;
 }
 
 /**

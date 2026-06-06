@@ -34,7 +34,6 @@ const fullImage = (url: string) => url.replace(/\?width=\d+/, "?width=1400");
 interface LightboxData {
   url: string;
   caption: string;
-  wikiUrl?: string;
 }
 
 /** Visionneuse plein écran : photo complète (non rognée), fermable au clic/Échap. */
@@ -64,16 +63,6 @@ function Lightbox({ data, onClose }: { data: LightboxData | null; onClose: () =>
         />
         <div className="mt-3 text-center">
           <p className="text-white text-sm font-bold">{data.caption}</p>
-          {data.wikiUrl && (
-            <a
-              href={data.wikiUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-300 text-xs hover:text-indigo-200 hover:underline"
-            >
-              Voir sur Wikipédia ↗
-            </a>
-          )}
         </div>
         <button
           type="button"
@@ -125,9 +114,7 @@ function PlaceHighlights({
               <button
                 key={it.name}
                 type="button"
-                onClick={() =>
-                  onOpenImage({ url: fullImage(it.imageUrl!), caption: label, wikiUrl: it.wikiUrl })
-                }
+                onClick={() => onOpenImage({ url: fullImage(it.imageUrl!), caption: label })}
                 className="shrink-0 w-24 group/hl text-left cursor-zoom-in"
                 title={`${label} — agrandir`}
               >
@@ -145,24 +132,14 @@ function PlaceHighlights({
                 </span>
               </button>
             ) : (
-              <a
-                key={it.name}
-                href={
-                  it.wikiUrl ??
-                  `https://fr.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(it.name)}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 w-24 group/hl"
-                title={label}
-              >
+              <div key={it.name} className="shrink-0 w-24" title={label}>
                 <div className="w-24 h-24 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-2xl">
                   🎨
                 </div>
-                <span className="block text-[9px] text-slate-300 leading-tight mt-1 line-clamp-2 group-hover/hl:text-amber-200">
+                <span className="block text-[9px] text-slate-300 leading-tight mt-1 line-clamp-2">
                   {label}
                 </span>
-              </a>
+              </div>
             );
           })}
         </div>

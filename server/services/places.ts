@@ -507,8 +507,6 @@ export interface PlaceHighlight {
   name: string;
   /** Photo réelle (Commons), sinon undefined. */
   imageUrl?: string;
-  /** Article Wikipédia FR de l'œuvre, sinon undefined. */
-  wikiUrl?: string;
 }
 
 // Types « œuvre d'art » acceptés (peinture, fresque, sculpture, statue, œuvre
@@ -570,14 +568,13 @@ async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighli
   // Labels @fr (INDEXÉS → rapide). Littéral sûr : on neutralise guillemets/antislash.
   const vals = names.map((n) => `"${n.replace(/[\\"]/g, " ")}"@fr`).join(" ");
   const sparql =
-    `SELECT ?lbl ?artLabel ?img ?article ?sl WHERE {` +
+    `SELECT ?lbl ?artLabel ?img ?sl WHERE {` +
     `VALUES ?lbl { ${vals} }` +
     `?place rdfs:label ?lbl.` +
     `?art (wdt:P276|wdt:P195) ?place.` +
     `?art wdt:P31 ?t. VALUES ?t { ${WD_ART_TYPES.join(" ")} }` +
     `?art wikibase:sitelinks ?sl. FILTER(?sl >= 5)` +
     `OPTIONAL { ?art wdt:P18 ?img. }` +
-    `OPTIONAL { ?article schema:about ?art; schema:isPartOf <https://fr.wikipedia.org/>. }` +
     `?art rdfs:label ?artLabel. FILTER(lang(?artLabel) = "fr")` +
     `} ORDER BY ?lbl DESC(?sl) LIMIT 400`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
@@ -587,7 +584,6 @@ async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighli
         lbl?: { value?: string };
         artLabel?: { value?: string };
         img?: { value?: string };
-        article?: { value?: string };
       }>;
     };
   } | null;
@@ -610,7 +606,6 @@ async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighli
     items.push({
       name: artName,
       imageUrl: b.img?.value ? b.img.value.replace(/^http:/, "https:") + "?width=320" : undefined,
-      wikiUrl: b.article?.value,
     });
   }
   return result;
