@@ -510,9 +510,13 @@ export interface PlaceHighlight {
 }
 
 // Types « œuvre d'art » acceptés (peinture, fresque, sculpture, statue, œuvre
-// d'art, œuvre visuelle). Liste DIRECTE (pas de P279*) = requête rapide.
+// d'art, œuvre visuelle, + « groupe de peintures » : pour les chefs-d'œuvre en
+// plusieurs versions comme Le Cri, dont la notoriété est portée par l'entité
+// « groupe », les versions physiques étant quasi inconnues sur Wikipédia).
+// Liste DIRECTE (pas de P279*) = requête rapide.
 const WD_ART_TYPES = [
   "wd:Q3305213", "wd:Q22669139", "wd:Q860861", "wd:Q179700", "wd:Q838948", "wd:Q4502142",
+  "wd:Q18573970",
 ];
 
 const highlightsCache = new Map<string, { at: number; items: PlaceHighlight[]; ttl: number }>();
@@ -568,10 +572,14 @@ async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighli
   // Labels @fr (INDEXÉS → rapide). Littéral sûr : on neutralise guillemets/antislash.
   const vals = names.map((n) => `"${n.replace(/[\\"]/g, " ")}"@fr`).join(" ");
   const sparql =
-    `SELECT ?lbl ?artLabel ?img ?sl WHERE {` +
+    `SELECT DISTINCT ?lbl ?artLabel ?img ?sl WHERE {` +
     `VALUES ?lbl { ${vals} }` +
     `?place rdfs:label ?lbl.` +
-    `?art (wdt:P276|wdt:P195) ?place.` +
+    // Œuvre rattachée au lieu DIRECTEMENT (P276 emplacement / P195 collection)
+    // OU via une de ses PARTIES (P527) : capte les chefs-d'œuvre en plusieurs
+    // versions (« groupe de peintures ») dont une version est dans ce musée —
+    // ex. Le Cri (sl 78) au musée Munch, invisible sinon (versions à sl 2).
+    `?art (wdt:P276|wdt:P195|wdt:P527/wdt:P276|wdt:P527/wdt:P195) ?place.` +
     `?art wdt:P31 ?t. VALUES ?t { ${WD_ART_TYPES.join(" ")} }` +
     `?art wikibase:sitelinks ?sl. FILTER(?sl >= 5)` +
     `OPTIONAL { ?art wdt:P18 ?img. }` +
