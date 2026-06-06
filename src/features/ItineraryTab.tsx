@@ -30,6 +30,17 @@ const cap = (s: string) => (s ? s.charAt(0).toLocaleUpperCase("fr-FR") + s.slice
 /** Version « grande » d'une image Commons (remplace ?width=N par une large). */
 const fullImage = (url: string) => url.replace(/\?width=\d+/, "?width=1400");
 
+/** Trois points qui ondulent (état de chargement « vivant »). */
+function LoadingDots() {
+  return (
+    <span className="inline-flex items-center gap-0.5 ml-1.5" aria-hidden="true">
+      <span className="loading-dot w-1.5 h-1.5 rounded-full bg-current" style={{ animationDelay: "0ms" }} />
+      <span className="loading-dot w-1.5 h-1.5 rounded-full bg-current" style={{ animationDelay: "150ms" }} />
+      <span className="loading-dot w-1.5 h-1.5 rounded-full bg-current" style={{ animationDelay: "300ms" }} />
+    </span>
+  );
+}
+
 /** Donnée d'une image ouverte en plein écran. */
 interface LightboxData {
   url: string;
@@ -480,9 +491,16 @@ export default function ItineraryTab() {
             <button
               onClick={handleGenerateItinerary}
               disabled={isGenerating}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition duration-200 cursor-pointer"
+              className="inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:hover:bg-indigo-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition duration-200 cursor-pointer disabled:cursor-default"
             >
-              {isGenerating ? "Connexions en cours..." : "Lancer la recherche maintenant !"}
+              {isGenerating ? (
+                <>
+                  Recherche en cours
+                  <LoadingDots />
+                </>
+              ) : (
+                "Lancer la recherche maintenant !"
+              )}
             </button>
           )}
         </div>
