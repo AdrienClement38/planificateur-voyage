@@ -84,29 +84,32 @@ function Lightbox({ data, onClose }: { data: LightboxData | null; onClose: () =>
  */
 function PlaceHighlights({
   items,
+  isOpen,
+  onToggle,
   onOpenImage,
 }: {
   items: PlaceHighlight[];
+  isOpen: boolean;
+  onToggle: () => void;
   onOpenImage: (data: LightboxData) => void;
 }) {
-  const [open, setOpen] = useState(false);
   if (!items || items.length === 0) return null;
 
   return (
     <div className="pt-1.5 border-t border-white/5">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
         className="flex items-center gap-1 text-[10px] font-bold text-amber-300/80 hover:text-amber-200 transition cursor-pointer"
-        aria-expanded={open}
+        aria-expanded={isOpen}
       >
         <Sparkles className="w-3 h-3" />
         Œuvres à voir
         <span className="text-amber-300/50 font-semibold">({items.length})</span>
-        <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
+      {isOpen && (
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
           {items.map((it) => {
             const label = cap(it.name);
@@ -368,6 +371,8 @@ export default function ItineraryTab() {
   const [highlights, setHighlights] = useState<Record<string, PlaceHighlight[]>>({});
   // Photo ouverte en plein écran (clic sur une vignette de lieu ou d'œuvre).
   const [lightbox, setLightbox] = useState<LightboxData | null>(null);
+  // Volet « Œuvres à voir » actuellement déplié (un seul à la fois — accordéon).
+  const [openHighlight, setOpenHighlight] = useState<string | null>(null);
   const highlightNamesKey = listToRender
     .filter((a) => a.category === "Culture" || a.category === "Visite")
     .map((a) => a.name)
@@ -576,7 +581,14 @@ export default function ItineraryTab() {
                       </div>
 
                       {/* Œuvres majeures à voir (affiché seulement s'il y en a) */}
-                      <PlaceHighlights items={highlights[act.name] ?? []} onOpenImage={setLightbox} />
+                      <PlaceHighlights
+                        items={highlights[act.name] ?? []}
+                        isOpen={openHighlight === act.id}
+                        onToggle={() =>
+                          setOpenHighlight((cur) => (cur === act.id ? null : act.id))
+                        }
+                        onOpenImage={setLightbox}
+                      />
 
                       <div className="flex items-center justify-end pt-1.5 border-t border-white/5">
                         {/* Activity Interactivity buttons: Vote and Schedule */}
