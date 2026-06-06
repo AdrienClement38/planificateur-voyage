@@ -77,22 +77,27 @@ export interface PlaceHighlight {
 }
 
 /**
- * Récupère les œuvres majeures à voir dans un lieu (via Wikidata, côté serveur).
- * Tolérant à l'échec : renvoie `[]` plutôt que de lever — ce volet est un bonus,
- * il ne doit jamais casser l'affichage de la carte.
+ * Récupère, EN LOT, les œuvres majeures à voir pour une liste de lieux (via
+ * Wikidata, côté serveur). Renvoie une map { nomDuLieu → œuvres }. Tolérant à
+ * l'échec : renvoie `{}` plutôt que de lever — ce volet est un bonus, il ne doit
+ * jamais casser l'affichage des cartes.
  */
-export async function fetchPlaceHighlights(
-  name: string,
+export async function fetchPlaceHighlightsBatch(
+  names: string[],
   signal?: AbortSignal,
-): Promise<PlaceHighlight[]> {
+): Promise<Record<string, PlaceHighlight[]>> {
+  if (names.length === 0) return {};
   try {
-    const res = await fetch(apiUrl(`/api/place-highlights?name=${encodeURIComponent(name)}`), {
+    const res = await fetch(apiUrl("/api/place-highlights"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names }),
       signal,
     });
-    if (!res.ok) return [];
-    const body = (await res.json()) as { highlights?: PlaceHighlight[] };
-    return body.highlights ?? [];
+    if (!res.ok) return {};
+    const body = (await res.json()) as { highlights?: Record<string, PlaceHighlight[]> };
+    return body.highlights ?? {};
   } catch {
-    return [];
+    return {};
   }
 }

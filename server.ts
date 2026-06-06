@@ -12,7 +12,7 @@ import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
 import { createServer } from "node:http";
 import { initRealtime } from "./server/realtime";
-import { fetchPlaceActivities, discoverPlaceHighlights } from "./server/services/places";
+import { fetchPlaceActivities, discoverPlaceHighlightsBatch } from "./server/services/places";
 
 dotenv.config();
 
@@ -538,14 +538,16 @@ app.post("/api/suggest-activities", async (req, res) => {
   }
 });
 
-// Œuvres majeures à voir dans un lieu (musée, chapelle…) — données Wikidata,
-// récupérées à la demande (au déploiement du volet « À voir »). Public, en
-// lecture seule, mis en cache côté serveur.
-app.get("/api/place-highlights", async (req, res) => {
-  const name = typeof req.query.name === "string" ? req.query.name : "";
-  if (!name.trim()) return res.json({ highlights: [] });
+// Œuvres majeures à voir dans des lieux (musée, chapelle…) — données Wikidata.
+// En LOT (les noms des cartes visibles) pour n'afficher le bouton « Œuvres à
+// voir » que là où il y a vraiment quelque chose. Public, lecture seule, caché.
+app.post("/api/place-highlights", async (req, res) => {
+  const names = Array.isArray(req.body?.names)
+    ? req.body.names.filter((n: unknown): n is string => typeof n === "string").slice(0, 60)
+    : [];
+  if (names.length === 0) return res.json({ highlights: {} });
   try {
-    const highlights = await discoverPlaceHighlights(name);
+    const highlights = await discoverPlaceHighlightsBatch(names);
     return res.json({ highlights });
   } catch (err: any) {
     return res.status(500).json({ error: "Échec.", details: err?.message });

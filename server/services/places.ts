@@ -522,34 +522,69 @@ const HL_TTL = 6 * 60 * 60 * 1000; // 6 h
 const HL_TTL_EMPTY = 30 * 60 * 1000; // 30 min si vide/échec (auto-réparation)
 
 /**
- * Œuvres majeures à voir DANS un lieu (musée, chapelle, cathédrale…), classées
- * par notoriété. S'appuie sur Wikidata : une œuvre déclare son lieu via P276
- * (emplacement) ou P195 (collection) — 100 % données réelles, rien d'inventé.
- * Renvoie [] si le lieu n'a aucune œuvre référencée (cas le plus fréquent).
+ * Œuvres majeures à voir DANS des lieux (musée, chapelle, cathédrale…), en LOT.
+ * S'appuie sur Wikidata : une œuvre déclare son lieu via P276 (emplacement) ou
+ * P195 (collection) — 100 % données réelles, rien d'inventé. Seuil de notoriété
+ * (≥5 langues) : on ne garde que les œuvres qui valent vraiment le détour, et la
+ * requête reste rapide même pour les musées immenses (la Galerie Borghèse a 184
+ * œuvres, dont l'écrasante majorité d'inconnues). Renvoie une map
+ * { nomDuLieu → œuvres }, tableau vide si le lieu n'a aucune œuvre notable.
  */
-export async function discoverPlaceHighlights(placeName: string): Promise<PlaceHighlight[]> {
-  const key = placeName.trim().toLowerCase();
-  if (!key) return [];
-  const hit = highlightsCache.get(key);
-  if (hit && Date.now() - hit.at < hit.ttl) return hit.items;
+export async function discoverPlaceHighlightsBatch(
+  names: string[],
+): Promise<Record<string, PlaceHighlight[]>> {
+  const out: Record<string, PlaceHighlight[]> = {};
+  const uniq = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  const missing: string[] = [];
+  for (const name of uniq) {
+    const hit = highlightsCache.get(name.toLowerCase());
+    if (hit && Date.now() - hit.at < hit.ttl) out[name] = hit.items;
+    else missing.push(name);
+  }
+  if (missing.length === 0) return out;
 
-  // Littéral SPARQL sûr : on neutralise guillemets/antislash (l'apostrophe passe
-  // sans souci dans une chaîne "…"). Le label @fr est INDEXÉ → match rapide.
-  const lit = placeName.replace(/[\\"]/g, " ").trim();
+  // Une requête par paquet de 12 lieux, en parallèle : chaque requête reste
+  // bornée (~1 s) et un musée géant ne fait pas exploser un gros lot.
+  const chunks: string[][] = [];
+  for (let i = 0; i < missing.length; i += 12) chunks.push(missing.slice(i, i + 12));
+  const maps = await Promise.all(chunks.map((c) => highlightsChunk(c)));
+  const merged = new Map<string, PlaceHighlight[]>();
+  for (const m of maps) for (const [k, v] of m) merged.set(k, v);
+
+  for (const name of missing) {
+    const items = merged.get(name.toLowerCase()) ?? [];
+    out[name] = items;
+    highlightsCache.set(name.toLowerCase(), {
+      at: Date.now(),
+      items,
+      ttl: items.length ? HL_TTL : HL_TTL_EMPTY,
+    });
+  }
+  return out;
+}
+
+/** Une requête groupée pour ≤12 lieux → map { nomLieu(minuscule) → top 6 œuvres }. */
+async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighlight[]>> {
+  const result = new Map<string, PlaceHighlight[]>();
+  if (names.length === 0) return result;
+  // Labels @fr (INDEXÉS → rapide). Littéral sûr : on neutralise guillemets/antislash.
+  const vals = names.map((n) => `"${n.replace(/[\\"]/g, " ")}"@fr`).join(" ");
   const sparql =
-    `SELECT DISTINCT ?artLabel ?img ?article ?sl WHERE {` +
-    `?place rdfs:label "${lit}"@fr.` +
+    `SELECT ?lbl ?artLabel ?img ?article ?sl WHERE {` +
+    `VALUES ?lbl { ${vals} }` +
+    `?place rdfs:label ?lbl.` +
     `?art (wdt:P276|wdt:P195) ?place.` +
     `?art wdt:P31 ?t. VALUES ?t { ${WD_ART_TYPES.join(" ")} }` +
-    `?art wikibase:sitelinks ?sl.` +
+    `?art wikibase:sitelinks ?sl. FILTER(?sl >= 5)` +
     `OPTIONAL { ?art wdt:P18 ?img. }` +
     `OPTIONAL { ?article schema:about ?art; schema:isPartOf <https://fr.wikipedia.org/>. }` +
     `?art rdfs:label ?artLabel. FILTER(lang(?artLabel) = "fr")` +
-    `} ORDER BY DESC(?sl) LIMIT 12`;
+    `} ORDER BY ?lbl DESC(?sl) LIMIT 400`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
-  const data = (await fetchJson(url, 9000)) as {
+  const data = (await fetchJson(url, 12000)) as {
     results?: {
       bindings?: Array<{
+        lbl?: { value?: string };
         artLabel?: { value?: string };
         img?: { value?: string };
         article?: { value?: string };
@@ -557,23 +592,28 @@ export async function discoverPlaceHighlights(placeName: string): Promise<PlaceH
     };
   } | null;
 
-  const seen = new Set<string>();
-  const items: PlaceHighlight[] = [];
+  const seen = new Map<string, Set<string>>();
   for (const b of data?.results?.bindings ?? []) {
-    const name = b.artLabel?.value?.trim();
-    if (!name) continue;
-    const k = name.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
+    const lbl = b.lbl?.value?.toLowerCase();
+    const artName = b.artLabel?.value?.trim();
+    if (!lbl || !artName) continue;
+    let items = result.get(lbl);
+    if (!items) {
+      items = [];
+      result.set(lbl, items);
+      seen.set(lbl, new Set());
+    }
+    const dedup = seen.get(lbl)!;
+    const ak = artName.toLowerCase();
+    if (dedup.has(ak) || items.length >= 6) continue;
+    dedup.add(ak);
     items.push({
-      name,
+      name: artName,
       imageUrl: b.img?.value ? b.img.value.replace(/^http:/, "https:") + "?width=320" : undefined,
       wikiUrl: b.article?.value,
     });
-    if (items.length >= 6) break;
   }
-  highlightsCache.set(key, { at: Date.now(), items, ttl: items.length ? HL_TTL : HL_TTL_EMPTY });
-  return items;
+  return result;
 }
 
 // ------------------------------------------------- Source : Wikivoyage (guide open data)
