@@ -377,7 +377,9 @@ async function wikidataPlaceFilter(qids: string[]): Promise<Set<string>> {
     `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
     `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } }`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
-  const data = (await fetchJson(url, 8000)) as {
+  // 14 s : on filtre désormais jusqu'à 220 candidats (mégapoles) — la traversée
+  // P279* sur autant d'items demande plus de marge que les 8 s d'origine.
+  const data = (await fetchJson(url, 14000)) as {
     results?: { bindings?: Array<{ item?: { value?: string } }> };
   } | null;
   for (const b of data?.results?.bindings ?? []) {
@@ -407,7 +409,7 @@ async function wikidataAround(
     `?item wikibase:sitelinks ?sitelinks. FILTER(?sitelinks >= ${minSitelinks})` +
     `?item wdt:P31 ?type. ?item rdfs:label ?label. FILTER(lang(?label) = "fr")` +
     `OPTIONAL { ?item wdt:P18 ?image. }` +
-    `} ORDER BY DESC(?sitelinks) LIMIT 260`;
+    `} ORDER BY DESC(?sitelinks) LIMIT 500`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
   type WdResp = {
     results?: {
@@ -459,14 +461,15 @@ async function discoverWikidata(
   const destLow = destination.toLowerCase().split(/[,(]/)[0].trim();
   // Candidats triés par notoriété, hors types évidents non visitables et hors
   // destination elle-même.
-  // On prend LARGE (110) : beaucoup de candidats à fort sitelinks sont des
-  // non-lieux (orgas, événements, régions…) qui seront retirés par le filtre
-  // « lieu » juste après — il faut donc sur-échantillonner pour qu'il reste ~50
-  // vrais lieux à la fin.
+  // On prend TRÈS LARGE (220 sur les 500 récupérés) : beaucoup de candidats à
+  // fort sitelinks sont des non-lieux (orgas, événements, régions…) retirés
+  // ensuite par le filtre « lieu ». Dans une mégapole, les vrais lieux du 2e
+  // rang sont noyés très bas dans le classement de notoriété — il faut donc
+  // sur-échantillonner massivement pour en faire remonter ~50 à la fin.
   const candidates = [...byId.entries()]
     .filter(([, a]) => ![...a.types].some((t) => WD_BAD_TYPES.has(t)) && a.label.toLowerCase() !== destLow)
     .sort((a, b) => b[1].sitelinks - a[1].sitelinks)
-    .slice(0, 110);
+    .slice(0, 220);
   if (candidates.length === 0) return [];
 
   // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
