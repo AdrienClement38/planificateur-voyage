@@ -439,7 +439,16 @@ async function wikidataPurge(qids: string[]): Promise<Set<string>> {
     `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q46831 } ` +
     `} UNION { ` +
     `?item wdt:P31/wdt:P279* wd:Q486972. ` +
-    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?q. VALUES ?q { wd:Q123705 wd:Q2983893 } } } }`;
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?q. VALUES ?q { wd:Q123705 wd:Q2983893 } } ` +
+    `} UNION { ` +
+    // Œuvre d'art exposée DANS un édifice (basilique, musée, église, palais) = un
+    // OBJET, pas un « lieu » à part : on l'écarte de la liste (elle est déjà dans
+    // « Œuvres à voir » du lieu). Ex. La Pietà, David. On GARDE les statues en
+    // EXTÉRIEUR (Manneken-Pis, Statue de la Liberté), dont le lieu n'est pas un
+    // édifice clos.
+    `?item wdt:P31 ?at. VALUES ?at { wd:Q860861 wd:Q3305213 wd:Q179700 wd:Q22669139 wd:Q838948 wd:Q4502142 } ` +
+    `?item wdt:P276 ?loc. ?loc wdt:P31/wdt:P279* ?bt. ` +
+    `VALUES ?bt { wd:Q33506 wd:Q1370598 wd:Q16970 wd:Q41176 wd:Q16560 } } }`;
   return (await sparqlItemSet(sparql, 10000)) ?? new Set();
 }
 
