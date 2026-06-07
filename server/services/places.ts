@@ -15,7 +15,14 @@
  * Liste vide si tout échoue (l'appelant affiche un état vide honnête).
  */
 
-type Cat = "Visite" | "Gastronomie" | "Culture" | "Loisir" | "Nature" | "Shopping" | "Bien-être";
+type Cat =
+  | "Visite"
+  | "Gastronomie"
+  | "Culture"
+  | "Loisir"
+  | "Nature"
+  | "Shopping"
+  | "Bien-être";
 
 export interface PlaceActivity {
   name: string;
@@ -37,10 +44,20 @@ export interface PlaceActivity {
   wikiTitle?: string;
   /** Notoriété interne : nombre de versions linguistiques Wikipédia (classement). */
   fame?: number;
+  /**
+   * Vraies vues Wikipédia (FR) si on a pu les récupérer, sinon undefined. C'est le
+   * signal de notoriété de PREMIER RANG. On le garde DISTINCT de `fame` pour ne
+   * jamais comparer une échelle « vues » (~10³-10⁵) à une échelle « liens » (~10²) :
+   * au tri final, les lieux AVEC vues passent tous devant (triés par vues), les
+   * autres suivent (triés par `fame`). Évite qu'un lieu majeur dont la récup de vues
+   * échoue (throttle) ne plonge sous un lieu mineur — classement stable & cohérent.
+   */
+  views?: number;
 }
 
 // Wikimedia exige un User-Agent identifiable avec contact (réduit le throttling).
-const UA = "Co-Tripper/1.0 (https://co-tripper.example; contact@co-tripper.example)";
+const UA =
+  "Co-Tripper/1.0 (https://co-tripper.example; contact@co-tripper.example)";
 
 async function fetchJson(url: string, ms = 6000): Promise<unknown | null> {
   const ctrl = new AbortController();
@@ -59,11 +76,16 @@ async function fetchJson(url: string, ms = 6000): Promise<unknown | null> {
   }
 }
 
-async function geocode(destination: string): Promise<{ lat: number; lon: number } | null> {
+async function geocode(
+  destination: string,
+): Promise<{ lat: number; lon: number } | null> {
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
     destination,
   )}&format=json&limit=1`;
-  const data = (await fetchJson(url)) as Array<{ lat?: string; lon?: string }> | null;
+  const data = (await fetchJson(url)) as Array<{
+    lat?: string;
+    lon?: string;
+  }> | null;
   const first = Array.isArray(data) ? data[0] : null;
   if (!first?.lat || !first?.lon) return null;
   const lat = parseFloat(first.lat);
@@ -72,7 +94,9 @@ async function geocode(destination: string): Promise<{ lat: number; lon: number 
 }
 
 /** Récupère les intros Wikipédia (fr) pour une liste de titres, en un appel. */
-async function fetchExtracts(titles: string[]): Promise<Record<string, string>> {
+async function fetchExtracts(
+  titles: string[],
+): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (titles.length === 0) return out;
   const url = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&exsentences=2&redirects=1&titles=${encodeURIComponent(
@@ -93,25 +117,46 @@ interface OverpassEl {
   tags?: Record<string, string>;
 }
 
-function classifyTags(tags: Record<string, string>): { category: Cat; duration: string } {
+function classifyTags(tags: Record<string, string>): {
+  category: Cat;
+  duration: string;
+} {
   // Bien-être : spas, thermes, bains.
-  if (tags.amenity === "spa" || tags.amenity === "public_bath" || tags.leisure === "spa")
+  if (
+    tags.amenity === "spa" ||
+    tags.amenity === "public_bath" ||
+    tags.leisure === "spa"
+  )
     return { category: "Bien-être", duration: "demi-journée" };
   // Loisir : téléphériques, trains panoramiques, parcs (attraction/aquatique), sport.
-  if (tags.aerialway || tags.railway) return { category: "Loisir", duration: "demi-journée" };
-  if (tags.leisure === "water_park" || tags.leisure === "sports_centre" || tags.leisure === "swimming_pool")
+  if (tags.aerialway || tags.railway)
+    return { category: "Loisir", duration: "demi-journée" };
+  if (
+    tags.leisure === "water_park" ||
+    tags.leisure === "sports_centre" ||
+    tags.leisure === "swimming_pool"
+  )
     return { category: "Loisir", duration: "demi-journée" };
   const tour = tags.tourism;
   if (tour === "zoo" || tour === "aquarium" || tour === "theme_park")
     return { category: "Loisir", duration: "demi-journée" };
   // Culture : musées, galeries, théâtres, cinémas, monuments.
-  if (tour === "museum" || tour === "gallery") return { category: "Culture", duration: "1h30" };
-  if (tags.amenity === "theatre" || tags.amenity === "cinema" || tags.amenity === "arts_centre")
+  if (tour === "museum" || tour === "gallery")
+    return { category: "Culture", duration: "1h30" };
+  if (
+    tags.amenity === "theatre" ||
+    tags.amenity === "cinema" ||
+    tags.amenity === "arts_centre"
+  )
     return { category: "Culture", duration: "2h" };
   if (tags.historic) return { category: "Culture", duration: "1h" };
   // Nature : parcs, jardins, réserves, sommets, plages, panoramas…
   if (tags.natural) return { category: "Nature", duration: "demi-journée" };
-  if (tags.leisure === "park" || tags.leisure === "garden" || tags.leisure === "nature_reserve")
+  if (
+    tags.leisure === "park" ||
+    tags.leisure === "garden" ||
+    tags.leisure === "nature_reserve"
+  )
     return { category: "Nature", duration: "1h30" };
   if (tour === "viewpoint") return { category: "Nature", duration: "1h" };
   return { category: "Visite", duration: "1h30" };
@@ -137,7 +182,10 @@ async function fetchOverpass(query: string): Promise<OverpassEl[]> {
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          "User-Agent": UA,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
         body: `data=${encodeURIComponent(query)}`,
         signal: ctrl.signal,
       });
@@ -202,13 +250,18 @@ async function discoverOverpass(
 
   // Notoriété via Wikidata (nombre de versions linguistiques).
   const entries = [...byName.values()];
-  const qids = entries.map((e) => e.qid).filter((q): q is string => !!q).slice(0, 50);
+  const qids = entries
+    .map((e) => e.qid)
+    .filter((q): q is string => !!q)
+    .slice(0, 50);
   const fame: Record<string, number> = {};
   if (qids.length > 0) {
     const wd = (await fetchJson(
       `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qids.join("|")}&props=sitelinks&format=json`,
       10000,
-    )) as { entities?: Record<string, { sitelinks?: Record<string, unknown> }> } | null;
+    )) as {
+      entities?: Record<string, { sitelinks?: Record<string, unknown> }>;
+    } | null;
     for (const [qid, ent] of Object.entries(wd?.entities ?? {})) {
       fame[qid] = Object.keys(ent.sitelinks ?? {}).length;
     }
@@ -226,7 +279,8 @@ async function discoverOverpass(
     arr.sort((a, b) => (fame[b.qid ?? ""] ?? 0) - (fame[a.qid ?? ""] ?? 0));
   }
   // Plafonne les sommets pour ne pas noyer les musées, monuments, activités…
-  if (buckets.has("Nature")) buckets.set("Nature", buckets.get("Nature")!.slice(0, 6));
+  if (buckets.has("Nature"))
+    buckets.set("Nature", buckets.get("Nature")!.slice(0, 6));
   const cats = [...buckets.keys()];
   const ordered: Entry[] = [];
   for (let round = 0; ordered.length < 16; round++) {
@@ -251,7 +305,10 @@ async function discoverOverpass(
     const extract = (e.wiki && extracts[e.wiki]) || "";
     return {
       name: e.name,
-      description: (extract || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
+      description: (extract || `Lieu réel à découvrir à ${destination}.`).slice(
+        0,
+        240,
+      ),
       category,
       duration,
       bookingUrl: mapsLink(e.name, destination),
@@ -271,14 +328,31 @@ function classifyTitle(title: string): { category: Cat; duration: string } {
   const t = title.toLowerCase();
   if (/spa|thermes|thermal|\bbains\b|bien-[êe]tre|wellness|sauna/.test(t))
     return { category: "Bien-être", duration: "demi-journée" };
-  if (/t[ée]l[ée](ph[ée]|f[ée])rique|t[ée]l[ée]cabine|funiculaire|cr[ée]maill[èe]re|montenvers|\bgare de\b|petit train|train du|luge|patinoire|parc aquatique|aquarium|\bzoo\b/.test(t))
+  if (
+    /t[ée]l[ée](ph[ée]|f[ée])rique|t[ée]l[ée]cabine|funiculaire|cr[ée]maill[èe]re|montenvers|\bgare de\b|petit train|train du|luge|patinoire|parc aquatique|aquarium|\bzoo\b/.test(
+      t,
+    )
+  )
     return { category: "Loisir", duration: "demi-journée" };
-  if (/mus[ée]e|galerie|fondation|th[ée][âa]tre|op[ée]ra/.test(t)) return { category: "Culture", duration: "1h30" };
-  if (/[ée]glise|temple|cath[ée]drale|basilique|chapelle|abbaye|monast[èe]re/.test(t))
+  if (/mus[ée]e|galerie|fondation|th[ée][âa]tre|op[ée]ra/.test(t))
+    return { category: "Culture", duration: "1h30" };
+  if (
+    /[ée]glise|temple|cath[ée]drale|basilique|chapelle|abbaye|monast[èe]re/.test(
+      t,
+    )
+  )
     return { category: "Culture", duration: "1h" };
-  if (/mont|aiguille|\bpic\b|\blac\b|glacier|parc|jardin|cascade|gorges|plage|colline|sommet|\bcol\b|grotte|r[ée]serve|presqu/.test(t))
+  if (
+    /mont|aiguille|\bpic\b|\blac\b|glacier|parc|jardin|cascade|gorges|plage|colline|sommet|\bcol\b|grotte|r[ée]serve|presqu/.test(
+      t,
+    )
+  )
     return { category: "Nature", duration: "demi-journée" };
-  if (/place|fontaine|\bpont\b|palais|ch[âa]teau|\btour\b|porte|\barc\b|forum|amphith[ée][âa]tre|colis[ée]e|ar[èe]nes|halle|hôtel de ville/.test(t))
+  if (
+    /place|fontaine|\bpont\b|palais|ch[âa]teau|\btour\b|porte|\barc\b|forum|amphith[ée][âa]tre|colis[ée]e|ar[èe]nes|halle|hôtel de ville/.test(
+      t,
+    )
+  )
     return { category: "Culture", duration: "1h" };
   return { category: "Visite", duration: "1h30" };
 }
@@ -297,11 +371,14 @@ async function discoverWikipedia(
 
   const destLower = destination.toLowerCase().split(/[,(]/)[0].trim();
   const isTown = (t: string) =>
-    t === destLower || t.replace(/[-\s](mont-blanc|sur-mer|les-bains)$/, "").trim() === destLower;
+    t === destLower ||
+    t.replace(/[-\s](mont-blanc|sur-mer|les-bains)$/, "").trim() === destLower;
 
   const titles = results
     .map((r) => r.title)
-    .filter((t) => !WIKI_BLOCK.test(t.toLowerCase()) && !isTown(t.toLowerCase()))
+    .filter(
+      (t) => !WIKI_BLOCK.test(t.toLowerCase()) && !isTown(t.toLowerCase()),
+    )
     .slice(0, 28);
   if (titles.length === 0) return [];
 
@@ -311,7 +388,9 @@ async function discoverWikipedia(
     const { category, duration } = classifyTitle(title);
     return {
       name: title,
-      description: (extracts[title] || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
+      description: (
+        extracts[title] || `Lieu réel à découvrir à ${destination}.`
+      ).slice(0, 240),
       category,
       duration,
       bookingUrl: mapsLink(title, destination),
@@ -331,30 +410,72 @@ async function discoverWikipedia(
 // Types Wikidata NON visitables (notoriété trompeuse) : villes, pays, langues,
 // organisations, personnes, événements, régions/périodes, universités.
 const WD_BAD_TYPES = new Set([
-  "Q515", "Q1549591", "Q5119", "Q484170", "Q3957", "Q532", "Q15284", "Q702842",
-  "Q6256", "Q3624078", "Q7275", "Q3024240",
+  "Q515",
+  "Q1549591",
+  "Q5119",
+  "Q484170",
+  "Q3957",
+  "Q532",
+  "Q15284",
+  "Q702842",
+  "Q6256",
+  "Q3624078",
+  "Q7275",
+  "Q3024240",
   "Q34770",
-  "Q43229", "Q193483", "Q327333", "Q163740", "Q4830453", "Q161726",
+  "Q43229",
+  "Q193483",
+  "Q327333",
+  "Q163740",
+  "Q4830453",
+  "Q161726",
   "Q5",
-  "Q1656682", "Q1190554", "Q13418847", "Q178561", "Q198", "Q2223653", "Q3199915",
-  "Q56061", "Q10864048", "Q82794", "Q34876", "Q1799794", "Q15916867",
-  "Q11514315", "Q11772",
-  "Q3918", "Q38723",
+  "Q1656682",
+  "Q1190554",
+  "Q13418847",
+  "Q178561",
+  "Q198",
+  "Q2223653",
+  "Q3199915",
+  "Q56061",
+  "Q10864048",
+  "Q82794",
+  "Q34876",
+  "Q1799794",
+  "Q15916867",
+  "Q11514315",
+  "Q11772",
+  "Q3918",
+  "Q38723",
   "Q41710",
   // Régions, universités historiques, entités/ordres/traités de droit international.
-  "Q36784", "Q3551775", "Q4671277", "Q15893266",
-  "Q391009", "Q474717", "Q1896989", "Q2311325",
-  "Q1063239", "Q1147274", "Q1414472", "Q16567729",
+  "Q36784",
+  "Q3551775",
+  "Q4671277",
+  "Q15893266",
+  "Q391009",
+  "Q474717",
+  "Q1896989",
+  "Q2311325",
+  "Q1063239",
+  "Q1147274",
+  "Q1414472",
+  "Q16567729",
   // Entreprises/sociétés (le siège est un bâtiment, mais ça ne se « visite » pas).
-  "Q891723", "Q6881511", "Q783794", "Q4830453",
+  "Q891723",
+  "Q6881511",
+  "Q783794",
+  "Q4830453",
   // Grandes surfaces (Carrefour…) : chaîne de magasins / chaîne de supermarchés.
   // On NE bannit PAS « grand magasin » (Q216107) → Galeries Lafayette, Printemps,
   // La Samaritaine (iconiques) restent.
-  "Q507619", "Q18043413",
+  "Q507619",
+  "Q18043413",
   // Défense en profondeur : non-lieux qui fuiteraient si le filtre « lieu »
   // échouait — page d'homonymie (Q4167410) et groupe de peintures (Q18573970,
   // ex. Le Cri). Filtrés en JS d'office, sans dépendre de la requête SPARQL.
-  "Q4167410", "Q18573970",
+  "Q4167410",
+  "Q18573970",
   // NB : on ne bannit PLUS les types « œuvre d'art » (sculpture/peinture/fresque) :
   // ça excluait à tort Trevi (site touristique ET sculpture). C'est le filtre
   // « lieu » (wikidataPlaceFilter) qui écarte les œuvres pures non visitables.
@@ -368,18 +489,30 @@ const WD_PLACE_TYPES = [
   "wd:Q811979", // structure architecturale (bâtiments, tours, ponts, églises, palais…)
   "wd:Q570116", // attraction touristique
   "wd:Q839954", // site archéologique
-  "wd:Q8502", "wd:Q54050", "wd:Q271669", // montagne, colline, relief
-  "wd:Q23397", "wd:Q15324", "wd:Q23442", // lac, plan d'eau, île
-  "wd:Q22698", "wd:Q4421", // parc, forêt
-  "wd:Q83620", "wd:Q174782", // voie (avenue/rue), place publique
-  "wd:Q123705", "wd:Q3257686", // quartier, localité
+  "wd:Q8502",
+  "wd:Q54050",
+  "wd:Q271669", // montagne, colline, relief
+  "wd:Q23397",
+  "wd:Q15324",
+  "wd:Q23442", // lac, plan d'eau, île
+  "wd:Q22698",
+  "wd:Q4421", // parc, forêt
+  "wd:Q83620",
+  "wd:Q174782", // voie (avenue/rue), place publique
+  "wd:Q123705",
+  "wd:Q3257686", // quartier, localité
   "wd:Q39614", // cimetière
 ];
 
-type WdItemResp = { results?: { bindings?: Array<{ item?: { value?: string } }> } };
+type WdItemResp = {
+  results?: { bindings?: Array<{ item?: { value?: string } }> };
+};
 
 /** Lance une requête SPARQL « liste de Q-ids » avec 1 réessai. `null` si échec réel. */
-async function sparqlItemSet(sparql: string, ms: number): Promise<Set<string> | null> {
+async function sparqlItemSet(
+  sparql: string,
+  ms: number,
+): Promise<Set<string> | null> {
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
   let data = (await fetchJson(url, ms)) as WdItemResp | null;
   if (!data?.results) {
@@ -401,13 +534,16 @@ async function sparqlItemSet(sparql: string, ms: number): Promise<Set<string> | 
  * `null` en cas d'ÉCHEC réseau (≠ Set vide = « aucun lieu ») afin que l'appelant
  * échoue SÛR (Wikidata vide) au lieu de laisser tout passer (fail-open).
  */
-async function wikidataPlaceFilter(qids: string[]): Promise<Set<string> | null> {
+async function wikidataPlaceFilter(
+  qids: string[],
+): Promise<Set<string> | null> {
   if (qids.length === 0) return new Set();
   // Découpe en lots de 100 : une requête P279* sur 100 items est bien plus rapide
   // (et bien moins sujette au timeout) que sur 220. Lots en PARALLÈLE → même temps
   // mural, mais chacun fiable. Si UN lot échoue franchement → échec global (null).
   const chunks: string[][] = [];
-  for (let i = 0; i < qids.length; i += 100) chunks.push(qids.slice(i, i + 100));
+  for (let i = 0; i < qids.length; i += 100)
+    chunks.push(qids.slice(i, i + 100));
   const results = await Promise.all(
     chunks.map((c) => {
       const values = c.map((q) => `wd:${q}`).join(" ");
@@ -499,7 +635,11 @@ async function wikidataAround(
     if (!id || !label) continue;
     let a = byId.get(id);
     if (!a) {
-      a = { label, sitelinks: Number(b.sitelinks?.value) || 0, types: new Set() };
+      a = {
+        label,
+        sitelinks: Number(b.sitelinks?.value) || 0,
+        types: new Set(),
+      };
       byId.set(id, a);
     }
     const ty = b.type?.value?.split("/").pop();
@@ -524,7 +664,10 @@ async function wikidataAround(
 const PV_CACHE = new Map<string, { at: number; v: number }>();
 const PV_TTL = 14 * 24 * 60 * 60 * 1000;
 
-async function wikiPageviews(lang: string, titles: string[]): Promise<Map<string, number>> {
+async function wikiPageviews(
+  lang: string,
+  titles: string[],
+): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (titles.length === 0) return out;
   const now = new Date();
@@ -532,7 +675,10 @@ async function wikiPageviews(lang: string, titles: string[]): Promise<Map<string
   const end = `${now.getFullYear()}${mm}0100`; // 1er du mois courant
   const start = `${now.getFullYear() - 3}${mm}0100`; // 3 ans avant
 
-  const one = async (title: string): Promise<number> => {
+  // Renvoie le total de vues, ou `null` si la récup a ÉCHOUÉ après réessais
+  // (≠ 0 vue). Cette distinction est CRUCIALE : un échec ne doit pas être confondu
+  // avec « pas de notoriété », sinon un lieu majeur throttlé plonge au classement.
+  const one = async (title: string): Promise<number | null> => {
     const key = `${lang}|${title}`;
     const hit = PV_CACHE.get(key);
     if (hit && now.getTime() - hit.at < PV_TTL) return hit.v;
@@ -540,23 +686,34 @@ async function wikiPageviews(lang: string, titles: string[]): Promise<Map<string
     const url =
       `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/` +
       `${lang}.wikipedia/all-access/all-agents/${enc}/monthly/${start}/${end}`;
-    let data = (await fetchJson(url, 7000)) as { items?: Array<{ views?: number }> } | null;
-    if (!data) {
-      await new Promise((r) => setTimeout(r, 200)); // 1 réessai court (transitoire)
-      data = (await fetchJson(url, 7000)) as { items?: Array<{ views?: number }> } | null;
+    // Plusieurs tentatives avec back-off : l'API REST par-article throttle vite
+    // (HTTP 429) en rafale. Sans ça, la récup d'un lieu majeur échoue au hasard et
+    // son classement devient INSTABLE d'une régénération à l'autre.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 400));
+      const data = (await fetchJson(url, 7000)) as {
+        items?: Array<{ views?: number }>;
+      } | null;
+      if (data) {
+        let s = 0;
+        for (const it of data.items ?? []) s += it.views ?? 0;
+        PV_CACHE.set(key, { at: now.getTime(), v: s }); // ne cache QUE les succès
+        return s;
+      }
     }
-    let s = 0;
-    for (const it of data?.items ?? []) s += it.views ?? 0;
-    if (data) PV_CACHE.set(key, { at: now.getTime(), v: s }); // ne cache PAS un échec (null)
-    return s;
+    return null; // échec réseau/throttle après réessais
   };
 
-  // Vagues de 16 requêtes concurrentes (compromis vitesse / throttle).
-  const CONC = 16;
+  // Vagues de 6 requêtes concurrentes (throttle REST agressif : 6 + back-off est
+  // bien plus FIABLE que 16 en rafale). Les échecs (null) ne sont PAS enregistrés
+  // → `out.get(title)` vaut undefined, que l'appelant distingue de « 0 vue ».
+  const CONC = 6;
   for (let i = 0; i < titles.length; i += CONC) {
     const slice = titles.slice(i, i + CONC);
     const views = await Promise.all(slice.map((t) => one(t)));
-    slice.forEach((t, k) => out.set(t, views[k]));
+    slice.forEach((t, k) => {
+      if (views[k] !== null) out.set(t, views[k]!);
+    });
   }
   return out;
 }
@@ -593,19 +750,31 @@ async function fetchPopularity(qids: string[]): Promise<Map<string, number>> {
     if (b.frTitle?.value) frOf.set(qid, b.frTitle.value);
     if (b.enTitle?.value) enOf.set(qid, b.enTitle.value);
   }
-  // Séquentiel (FR puis EN) : on ne double pas la concurrence vers l'API REST.
+  // 1) Vues FR pour tous (signal PRINCIPAL = audience française de l'app).
   const frViews = await wikiPageviews("fr", [...new Set(frOf.values())]);
-  const enViews = await wikiPageviews("en", [...new Set(enOf.values())]);
+  // 2) EN UNIQUEMENT en secours : on ne sonde EN que pour les lieux SANS vue FR
+  //    exploitable (pas d'article FR, ou récup FR échouée). → 2× moins d'appels
+  //    REST dans le cas courant : moins de throttle, donc plus robuste ET rapide.
+  const needEn = qids.filter((qid) => {
+    const t = frOf.get(qid);
+    const fv = t ? frViews.get(t) : undefined;
+    return (fv === undefined || fv <= 0) && enOf.has(qid);
+  });
+  const enViews = await wikiPageviews("en", [
+    ...new Set(needEn.map((qid) => enOf.get(qid)!)),
+  ]);
   for (const qid of qids) {
-    const fr = frOf.has(qid) ? frViews.get(frOf.get(qid)!) ?? 0 : 0;
-    const en = enOf.has(qid) ? enViews.get(enOf.get(qid)!) ?? 0 : 0;
+    const frT = frOf.get(qid);
+    const fr = frT ? frViews.get(frT) : undefined; // undefined = pas d'article OU échec
+    const enT = enOf.get(qid);
+    const en = enT ? enViews.get(enT) : undefined;
     // Audience = touristes FRANÇAIS → on classe sur les vues FR PURES (ce que les
     // Français consultent : opéra, musée, château…). L'EN est gonflé par l'intérêt
     // MONDIAL du sport (un stade explose en EN via le foot) : on l'IGNORE quand un
     // article FR existe, et on ne l'utilise (réduit à l'échelle FR, ×0,1) qu'en
     // SECOURS pour les lieux sans article FR. Pas un « bonus » : on pondère par
     // l'audience réelle de l'app.
-    const v = fr > 0 ? fr : en * 0.1;
+    const v = fr && fr > 0 ? fr : en && en > 0 ? en * 0.1 : 0;
     if (v > 0) result.set(qid, v);
   }
   return result;
@@ -632,7 +801,11 @@ async function discoverWikidata(
   // rang sont noyés très bas dans le classement de notoriété — il faut donc
   // sur-échantillonner massivement pour en faire remonter ~50 à la fin.
   const candidates = [...byId.entries()]
-    .filter(([, a]) => ![...a.types].some((t) => WD_BAD_TYPES.has(t)) && a.label.toLowerCase() !== destLow)
+    .filter(
+      ([, a]) =>
+        ![...a.types].some((t) => WD_BAD_TYPES.has(t)) &&
+        a.label.toLowerCase() !== destLow,
+    )
     .sort((a, b) => b[1].sitelinks - a[1].sitelinks)
     .slice(0, 220);
   if (candidates.length === 0) return [];
@@ -666,7 +839,9 @@ async function discoverWikidata(
       provider: "Wikidata",
       fame: a.sitelinks,
       wikiTitle: a.label,
-      imageUrl: a.image ? a.image.replace(/^http:/, "https:") + "?width=800" : undefined,
+      imageUrl: a.image
+        ? a.image.replace(/^http:/, "https:") + "?width=800"
+        : undefined,
     });
     outIds.push(id);
     if (out.length >= 55) break;
@@ -682,9 +857,15 @@ async function discoverWikidata(
   const popularity = await fetchPopularity(outIds.slice(0, 40));
   out.forEach((p, i) => {
     const views = popularity.get(outIds[i]);
-    if (views && views > 0) p.fame = views;
+    if (views && views > 0) {
+      p.fame = views; // pour l'admissibilité (≥8) et l'affichage
+      p.views = views; // signal de 1er rang, distinct de fame (cf. tri final)
+    }
   });
-  out.sort((a, b) => (b.fame ?? 0) - (a.fame ?? 0));
+  // Tri local par vues/fame. NB : l'ordre DÉFINITIF est posé au tri final de
+  // doFetchPlaceActivities (qui fusionne toutes les sources et fait le palier
+  // « vues d'abord »). Ce tri-ci ne sert qu'à un éventuel usage direct.
+  out.sort((a, b) => (b.views ?? b.fame ?? 0) - (a.views ?? a.fame ?? 0));
   return out;
 }
 
@@ -703,11 +884,19 @@ export interface PlaceHighlight {
 // « groupe », les versions physiques étant quasi inconnues sur Wikipédia).
 // Liste DIRECTE (pas de P279*) = requête rapide.
 const WD_ART_TYPES = [
-  "wd:Q3305213", "wd:Q22669139", "wd:Q860861", "wd:Q179700", "wd:Q838948", "wd:Q4502142",
+  "wd:Q3305213",
+  "wd:Q22669139",
+  "wd:Q860861",
+  "wd:Q179700",
+  "wd:Q838948",
+  "wd:Q4502142",
   "wd:Q18573970",
 ];
 
-const highlightsCache = new Map<string, { at: number; items: PlaceHighlight[]; ttl: number }>();
+const highlightsCache = new Map<
+  string,
+  { at: number; items: PlaceHighlight[]; ttl: number }
+>();
 const HL_TTL = 6 * 60 * 60 * 1000; // 6 h
 const HL_TTL_EMPTY = 30 * 60 * 1000; // 30 min si vide/échec (auto-réparation)
 
@@ -736,7 +925,8 @@ export async function discoverPlaceHighlightsBatch(
   // Une requête par paquet de 12 lieux, en parallèle : chaque requête reste
   // bornée (~1 s) et un musée géant ne fait pas exploser un gros lot.
   const chunks: string[][] = [];
-  for (let i = 0; i < missing.length; i += 12) chunks.push(missing.slice(i, i + 12));
+  for (let i = 0; i < missing.length; i += 12)
+    chunks.push(missing.slice(i, i + 12));
   const maps = await Promise.all(chunks.map((c) => highlightsChunk(c)));
   const merged = new Map<string, PlaceHighlight[]>();
   for (const m of maps) for (const [k, v] of m) merged.set(k, v);
@@ -754,7 +944,9 @@ export async function discoverPlaceHighlightsBatch(
 }
 
 /** Une requête groupée pour ≤12 lieux → map { nomLieu(minuscule) → top 6 œuvres }. */
-async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighlight[]>> {
+async function highlightsChunk(
+  names: string[],
+): Promise<Map<string, PlaceHighlight[]>> {
   const result = new Map<string, PlaceHighlight[]>();
   if (names.length === 0) return result;
   // Labels @fr (INDEXÉS → rapide). Littéral sûr : on neutralise guillemets/antislash.
@@ -803,7 +995,9 @@ async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighli
     dedup.add(ak);
     items.push({
       name: artName,
-      imageUrl: b.img?.value ? b.img.value.replace(/^http:/, "https:") + "?width=320" : undefined,
+      imageUrl: b.img?.value
+        ? b.img.value.replace(/^http:/, "https:") + "?width=320"
+        : undefined,
     });
   }
   return result;
@@ -884,7 +1078,8 @@ function wvFields(block: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const p of parts) {
     const eq = p.indexOf("=");
-    if (eq > 0) out[p.slice(0, eq).trim().toLowerCase()] = p.slice(eq + 1).trim();
+    if (eq > 0)
+      out[p.slice(0, eq).trim().toLowerCase()] = p.slice(eq + 1).trim();
   }
   return out;
 }
@@ -894,7 +1089,12 @@ async function wvWikitext(title: string): Promise<string | null> {
     title,
   )}&format=json`;
   const data = (await fetchJson(url)) as {
-    query?: { pages?: Record<string, { revisions?: Array<{ slots?: { main?: { "*"?: string } } }> }> };
+    query?: {
+      pages?: Record<
+        string,
+        { revisions?: Array<{ slots?: { main?: { "*"?: string } } }> }
+      >;
+    };
   } | null;
   const page = Object.values(data?.query?.pages ?? {})[0];
   return page?.revisions?.[0]?.slots?.main?.["*"] ?? null;
@@ -905,7 +1105,9 @@ async function wvWikitext(title: string): Promise<string | null> {
 const WV_BLOCK =
   /office de tourisme|information[s]? touristique|syndicat d'initiative|maison du tourisme|pr[ée]fecture|sous-pr[ée]fecture|\bmairie\b|h[ôo]tel de ville|consulat|ambassade|\bgare\b|gare routi[èe]re|a[ée]roport|\bparking\b|station-service|station service|h[ôo]pital|clinique|pharmacie|\bla poste\b|bureau de poste|commissariat|gendarmerie|\bbanque\b|distributeur|bureau de change|laverie|location de v[ée]lo|\btaxi\b|supermarch[ée]|\blyc[ée]e\b|\bcoll[èe]ge\b|universit[ée]|palais de justice|\btribunal\b/i;
 
-async function discoverWikivoyage(destination: string): Promise<PlaceActivity[]> {
+async function discoverWikivoyage(
+  destination: string,
+): Promise<PlaceActivity[]> {
   const q = destination.split(/[,(]/)[0].trim();
   // Essai direct par titre (gère les redirections) ; sinon, recherche plein texte.
   let wikitext = await wvWikitext(q);
@@ -913,7 +1115,9 @@ async function discoverWikivoyage(destination: string): Promise<PlaceActivity[]>
     const sUrl = `https://fr.wikivoyage.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
       q,
     )}&srlimit=1&format=json`;
-    const sd = (await fetchJson(sUrl)) as { query?: { search?: Array<{ title: string }> } } | null;
+    const sd = (await fetchJson(sUrl)) as {
+      query?: { search?: Array<{ title: string }> };
+    } | null;
     const title = sd?.query?.search?.[0]?.title;
     if (title) wikitext = await wvWikitext(title);
   }
@@ -934,12 +1138,17 @@ async function discoverWikivoyage(destination: string): Promise<PlaceActivity[]>
       const generic = guess.category === "Visite";
       out.push({
         name,
-        description: (stripWiki(f["description"] || "") || stripWiki(f["adresse"] || "") || `Lieu réel à découvrir à ${destination}.`).slice(0, 240),
+        description: (
+          stripWiki(f["description"] || "") ||
+          stripWiki(f["adresse"] || "") ||
+          `Lieu réel à découvrir à ${destination}.`
+        ).slice(0, 240),
         category: isActivity && generic ? "Loisir" : guess.category,
         duration: isActivity && generic ? "demi-journée" : guess.duration,
         bookingUrl: mapsLink(name, destination),
         provider: "Wikivoyage",
-        wikiTitle: stripWiki(f["wikipédia"] || f["wikipedia"] || "") || undefined,
+        wikiTitle:
+          stripWiki(f["wikipédia"] || f["wikipedia"] || "") || undefined,
       });
     }
   };
@@ -954,13 +1163,18 @@ async function discoverWikivoyage(destination: string): Promise<PlaceActivity[]>
 // les lieux que OSM/Wikipédia ratent (spas, luge, parcs, téléphériques…).
 function fsqCategory(cats: Array<{ name?: string }> | undefined): Cat {
   const n = (cats?.[0]?.name || "").toLowerCase();
-  if (/spa|bath|sauna|wellness|massage|hammam|thermal|therme|onsen/.test(n)) return "Bien-être";
+  if (/spa|bath|sauna|wellness|massage|hammam|thermal|therme|onsen/.test(n))
+    return "Bien-être";
   if (
-    /museum|gallery|\bart\b|theater|theatre|historic|monument|church|temple|cathedral|mosque|synagogue|landmark|memorial|castle|palace|heritage|cultural|library|exhibit|opera/.test(n)
+    /museum|gallery|\bart\b|theater|theatre|historic|monument|church|temple|cathedral|mosque|synagogue|landmark|memorial|castle|palace|heritage|cultural|library|exhibit|opera/.test(
+      n,
+    )
   )
     return "Culture";
   if (
-    /park|garden|mountain|lake|beach|trail|scenic|nature|forest|waterfall|\bhill\b|valley|river|island|\bcave\b|viewpoint|lookout|botanical|reserve|glacier/.test(n)
+    /park|garden|mountain|lake|beach|trail|scenic|nature|forest|waterfall|\bhill\b|valley|river|island|\bcave\b|viewpoint|lookout|botanical|reserve|glacier/.test(
+      n,
+    )
   )
     return "Nature";
   if (
@@ -969,7 +1183,11 @@ function fsqCategory(cats: Array<{ name?: string }> | undefined): Cat {
     )
   )
     return "Loisir";
-  if (/restaurant|food|café|cafe|\bbar\b|bistro|brasserie|winery|brewery|eatery|diner/.test(n))
+  if (
+    /restaurant|food|café|cafe|\bbar\b|bistro|brasserie|winery|brewery|eatery|diner/.test(
+      n,
+    )
+  )
     return "Gastronomie";
   if (/shop|mall|store|boutique|market/.test(n)) return "Shopping";
   return "Visite";
@@ -1018,11 +1236,20 @@ async function discoverFoursquare(
       const category = fsqCategory(p.categories);
       // On ne garde que le touristique : on écarte "Visite" générique (commerces,
       // services), la restauration et le shopping (bruit pour un planning).
-      if (category === "Visite" || category === "Gastronomie" || category === "Shopping") continue;
+      if (
+        category === "Visite" ||
+        category === "Gastronomie" ||
+        category === "Shopping"
+      )
+        continue;
       const catName = p.categories?.[0]?.name;
       out.push({
         name: p.name,
-        description: (catName || p.location?.formatted_address || `Lieu réel à ${destination}.`).slice(0, 240),
+        description: (
+          catName ||
+          p.location?.formatted_address ||
+          `Lieu réel à ${destination}.`
+        ).slice(0, 240),
         category,
         duration: category === "Bien-être" ? "demi-journée" : "1h30",
         bookingUrl: mapsLink(p.name, destination),
@@ -1039,7 +1266,10 @@ async function discoverFoursquare(
 
 // ------------------------------------------------------------------- Point d'entrée
 
-const cache = new Map<string, { at: number; places: PlaceActivity[]; ttl: number }>();
+const cache = new Map<
+  string,
+  { at: number; places: PlaceActivity[]; ttl: number }
+>();
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h (résultat complet)
 const CACHE_TTL_DEGRADED = 15 * 60 * 1000; // 15 min si Wikidata a échoué (auto-réparation)
 
@@ -1065,7 +1295,10 @@ function dedupKey(name: string, dest: string): string {
       .trim();
   const d = norm(dest);
   let k = norm(name);
-  if (d) k = k.replace(new RegExp(`(?:\\s(?:de|d|du|des|la|le|l))?\\s${d}$`), "").trim();
+  if (d)
+    k = k
+      .replace(new RegExp(`(?:\\s(?:de|d|du|des|la|le|l))?\\s${d}$`), "")
+      .trim();
   return k;
 }
 
@@ -1073,7 +1306,12 @@ interface RawWikiResponse {
   query?: {
     pages?: Record<
       string,
-      { title?: string; extract?: string; thumbnail?: { source?: string }; langlinks?: unknown[] }
+      {
+        title?: string;
+        extract?: string;
+        thumbnail?: { source?: string };
+        langlinks?: unknown[];
+      }
     >;
     normalized?: Array<{ from: string; to: string }>;
     redirects?: Array<{ from: string; to: string }>;
@@ -1113,8 +1351,10 @@ async function enrichBatch(batch: PlaceActivity[]): Promise<void> {
   }
   // Suit les renvois (titre demandé → titre résolu) pour relier la réponse.
   const alias: Record<string, string> = {};
-  for (const n of q.normalized ?? []) alias[n.from.toLowerCase()] = n.to.toLowerCase();
-  for (const r of q.redirects ?? []) alias[r.from.toLowerCase()] = r.to.toLowerCase();
+  for (const n of q.normalized ?? [])
+    alias[n.from.toLowerCase()] = n.to.toLowerCase();
+  for (const r of q.redirects ?? [])
+    alias[r.from.toLowerCase()] = r.to.toLowerCase();
   const resolve = (name: string): string => {
     let t = name.toLowerCase();
     for (let h = 0; h < 3 && alias[t]; h++) t = alias[t];
@@ -1138,7 +1378,8 @@ async function enrichBatch(batch: PlaceActivity[]): Promise<void> {
 /** Enrichit tous les lieux par lots de 20, EN PARALLÈLE (latence = 1 lot). */
 async function enrichWikiMedia(places: PlaceActivity[]): Promise<void> {
   const batches: PlaceActivity[][] = [];
-  for (let i = 0; i < places.length; i += 20) batches.push(places.slice(i, i + 20));
+  for (let i = 0; i < places.length; i += 20)
+    batches.push(places.slice(i, i + 20));
   await Promise.all(batches.map((b) => enrichBatch(b).catch(() => undefined)));
 }
 
@@ -1152,7 +1393,9 @@ async function enrichWikiMedia(places: PlaceActivity[]): Promise<void> {
  */
 const inFlight = new Map<string, Promise<PlaceActivity[]>>();
 
-export async function fetchPlaceActivities(destination: string): Promise<PlaceActivity[]> {
+export async function fetchPlaceActivities(
+  destination: string,
+): Promise<PlaceActivity[]> {
   const key = destination.trim().toLowerCase();
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < hit.ttl) return hit.places;
@@ -1182,11 +1425,19 @@ async function doFetchPlaceActivities(
     // Toutes les sources en parallèle. Wikidata (notoriété) gère les mégapoles ;
     // Foursquare (à clé) renvoie [] si non configurée → aucun impact.
     const [wd, fs, wv, ov, wk] = await Promise.all([
-      discoverWikidata(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
-      discoverFoursquare(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
+      discoverWikidata(geo.lat, geo.lon, destination).catch(
+        () => [] as PlaceActivity[],
+      ),
+      discoverFoursquare(geo.lat, geo.lon, destination).catch(
+        () => [] as PlaceActivity[],
+      ),
       discoverWikivoyage(destination).catch(() => [] as PlaceActivity[]),
-      discoverOverpass(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
-      discoverWikipedia(geo.lat, geo.lon, destination).catch(() => [] as PlaceActivity[]),
+      discoverOverpass(geo.lat, geo.lon, destination).catch(
+        () => [] as PlaceActivity[],
+      ),
+      discoverWikipedia(geo.lat, geo.lon, destination).catch(
+        () => [] as PlaceActivity[],
+      ),
     ]);
 
     // Wikipédia (recherche de proximité) ramène des INSTITUTIONS (ministères,
@@ -1214,9 +1465,19 @@ async function doFetchPlaceActivities(
     // (présent dans ≥8 Wikipédia). Le reste = remplissage fade, écarté.
     const admissible = (p: PlaceActivity) => !!p.imageUrl || (p.fame ?? 0) >= 8;
 
-    // Classement par NOTORIÉTÉ PURE (nombre de versions Wikipédia) : le lieu connu
-    // passe devant l'inconnu, un point c'est tout. AUCUN autre facteur dans le rang.
-    const ranked = merged.filter(admissible).sort((a, b) => (b.fame ?? 0) - (a.fame ?? 0));
+    // Classement par NOTORIÉTÉ, en DEUX PALIERS — pour ne JAMAIS comparer deux
+    // échelles incomparables : les vraies vues (~10³-10⁵) et le repli liens/sitelinks
+    // (~10²). Les lieux dont on a les VRAIES vues passent TOUS devant (triés par vues
+    // = audience FR réelle) ; les autres suivent (triés par `fame` = nb de Wikipédia).
+    // Conséquence ROBUSTESSE : un lieu majeur dont la récup de vues échoue (throttle)
+    // ne plonge pas au milieu — il reste au pire en tête du 2ᵉ palier. AUCUN bonus/malus.
+    const ranked = merged.filter(admissible).sort((a, b) => {
+      const av = a.views != null;
+      const bv = b.views != null;
+      if (av !== bv) return av ? -1 : 1;
+      if (av && bv) return b.views! - a.views!;
+      return (b.fame ?? 0) - (a.fame ?? 0);
+    });
 
     // Si on a assez de lieux AVEC photo, on ne garde QUE ceux-là (peps visuel,
     // zéro carte fade). Sinon on complète avec les moins illustrés mais notables.
