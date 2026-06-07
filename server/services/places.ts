@@ -351,6 +351,10 @@ const WD_BAD_TYPES = new Set([
   // On NE bannit PAS « grand magasin » (Q216107) → Galeries Lafayette, Printemps,
   // La Samaritaine (iconiques) restent.
   "Q507619", "Q18043413",
+  // Défense en profondeur : non-lieux qui fuiteraient si le filtre « lieu »
+  // échouait — page d'homonymie (Q4167410) et groupe de peintures (Q18573970,
+  // ex. Le Cri). Filtrés en JS d'office, sans dépendre de la requête SPARQL.
+  "Q4167410", "Q18573970",
   // NB : on ne bannit PLUS les types « œuvre d'art » (sculpture/peinture/fresque) :
   // ça excluait à tort Trevi (site touristique ET sculpture). C'est le filtre
   // « lieu » (wikidataPlaceFilter) qui écarte les œuvres pures non visitables.
@@ -372,33 +376,58 @@ const WD_PLACE_TYPES = [
   "wd:Q39614", // cimetière
 ];
 
-/** Sous-ensemble des Q-ids qui SONT des lieux (sous-classe d'un super-type « lieu »). */
-async function wikidataPlaceFilter(qids: string[]): Promise<Set<string>> {
-  const set = new Set<string>();
-  if (qids.length === 0) return set;
-  const values = qids.map((q) => `wd:${q}`).join(" ");
-  const sparql =
-    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
-    `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } ` +
-    // Purge : cours d'eau (rivières) et chaînes/massifs de montagnes — ce ne sont
-    // pas des « sorties » (Doire baltée, Alpes occidentales, massif du Mont-Blanc).
-    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q46831 } } ` +
-    // Purge : commune/ville SÉPARÉE = zone habitée (Q486972) qui n'est PAS un
-    // quartier → écarte Courmayeur près de Chamonix, MAIS garde les quartiers
-    // touristiques (Montmartre, Trastevere, eux AUSSI « quartiers » Q123705/Q2983893).
-    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* wd:Q486972. ` +
-    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?q. VALUES ?q { wd:Q123705 wd:Q2983893 } } } }`;
+type WdItemResp = { results?: { bindings?: Array<{ item?: { value?: string } }> } };
+
+/** Lance une requête SPARQL « liste de Q-ids » avec 1 réessai. `null` si échec réel. */
+async function sparqlItemSet(sparql: string, ms: number): Promise<Set<string> | null> {
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
-  // 14 s : on filtre désormais jusqu'à 220 candidats (mégapoles) — la traversée
-  // P279* sur autant d'items demande plus de marge que les 8 s d'origine.
-  const data = (await fetchJson(url, 14000)) as {
-    results?: { bindings?: Array<{ item?: { value?: string } }> };
-  } | null;
-  for (const b of data?.results?.bindings ?? []) {
+  let data = (await fetchJson(url, ms)) as WdItemResp | null;
+  if (!data?.results) {
+    await new Promise((r) => setTimeout(r, 700));
+    data = (await fetchJson(url, ms)) as WdItemResp | null;
+  }
+  if (!data?.results) return null; // échec réseau/throttle après réessai
+  const set = new Set<string>();
+  for (const b of data.results.bindings ?? []) {
     const id = b.item?.value?.split("/").pop();
     if (id) set.add(id);
   }
   return set;
+}
+
+/**
+ * Filtre CRITIQUE : sous-ensemble des Q-ids qui SONT des lieux (sous-classe d'un
+ * super-type « lieu »). Léger (allow-list seule) pour rester fiable. Renvoie
+ * `null` en cas d'ÉCHEC réseau (≠ Set vide = « aucun lieu ») afin que l'appelant
+ * échoue SÛR (Wikidata vide) au lieu de laisser tout passer (fail-open).
+ */
+async function wikidataPlaceFilter(qids: string[]): Promise<Set<string> | null> {
+  if (qids.length === 0) return new Set();
+  const values = qids.map((q) => `wd:${q}`).join(" ");
+  const sparql =
+    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
+    `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } }`;
+  return sparqlItemSet(sparql, 12000);
+}
+
+/**
+ * Purge SECONDAIRE (non critique) : parmi des Q-ids déjà confirmés « lieux »,
+ * renvoie ceux à ÉCARTER — cours d'eau (rivières), chaînes/massifs de montagnes,
+ * et communes SÉPARÉES (zone habitée Q486972 qui n'est PAS un quartier
+ * Q123705/Q2983893 → vire Courmayeur, garde Montmartre/Trastevere). Léger (sur
+ * ~50 survivants) ; en cas d'échec on ne purge rien (Set vide) — les vues
+ * classent ces parasites tout en bas de toute façon.
+ */
+async function wikidataPurge(qids: string[]): Promise<Set<string>> {
+  if (qids.length === 0) return new Set();
+  const values = qids.map((q) => `wd:${q}`).join(" ");
+  const sparql =
+    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } { ` +
+    `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q46831 } ` +
+    `} UNION { ` +
+    `?item wdt:P31/wdt:P279* wd:Q486972. ` +
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?q. VALUES ?q { wd:Q123705 wd:Q2983893 } } } }`;
+  return (await sparqlItemSet(sparql, 10000)) ?? new Set();
 }
 
 interface WdAgg {
@@ -573,13 +602,24 @@ async function discoverWikidata(
   if (candidates.length === 0) return [];
 
   // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
-  // d'un coup les événements, traités, affaires, œuvres… géotaggés au même endroit.
+  // événements, traités, œuvres, bateaux… géotaggés au même endroit.
   const placeIds = await wikidataPlaceFilter(candidates.map(([id]) => id));
+  // FAIL-SAFE : si le filtre « lieu » a échoué (réseau/throttle même après
+  // réessai), on n'invente RIEN — Wikidata renvoie vide pour ce fetch (→ cache
+  // court 15 min, auto-réparation) au lieu de laisser fuir des non-lieux (œuvres,
+  // bateaux, compétitions…). C'est le « fail-open » d'avant qui cassait tout.
+  if (placeIds === null) return [];
+
+  // Survivants = vrais lieux. Puis PURGE secondaire (rivières/chaînes/communes
+  // séparées) faite À PART sur ce petit lot (~50) : légère, et non bloquante (si
+  // elle échoue, on ne purge rien — les vues classent ces parasites tout en bas).
+  const survivors = candidates.filter(([id]) => placeIds.has(id));
+  const drop = await wikidataPurge(survivors.map(([id]) => id));
 
   const out: PlaceActivity[] = [];
   const outIds: string[] = [];
-  for (const [id, a] of candidates) {
-    if (placeIds.size > 0 && !placeIds.has(id)) continue; // pas un lieu → écarté
+  for (const [id, a] of survivors) {
+    if (drop.has(id)) continue;
     const { category, duration } = classifyTitle(a.label);
     out.push({
       name: a.label,
