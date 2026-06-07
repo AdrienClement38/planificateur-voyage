@@ -597,9 +597,15 @@ async function fetchPopularity(qids: string[]): Promise<Map<string, number>> {
   const frViews = await wikiPageviews("fr", [...new Set(frOf.values())]);
   const enViews = await wikiPageviews("en", [...new Set(enOf.values())]);
   for (const qid of qids) {
-    const v =
-      (frOf.has(qid) ? frViews.get(frOf.get(qid)!) ?? 0 : 0) +
-      (enOf.has(qid) ? enViews.get(enOf.get(qid)!) ?? 0 : 0);
+    const fr = frOf.has(qid) ? frViews.get(frOf.get(qid)!) ?? 0 : 0;
+    const en = enOf.has(qid) ? enViews.get(enOf.get(qid)!) ?? 0 : 0;
+    // Audience = touristes FRANÇAIS → on classe sur les vues FR PURES (ce que les
+    // Français consultent : opéra, musée, château…). L'EN est gonflé par l'intérêt
+    // MONDIAL du sport (un stade explose en EN via le foot) : on l'IGNORE quand un
+    // article FR existe, et on ne l'utilise (réduit à l'échelle FR, ×0,1) qu'en
+    // SECOURS pour les lieux sans article FR. Pas un « bonus » : on pondère par
+    // l'audience réelle de l'app.
+    const v = fr > 0 ? fr : en * 0.1;
     if (v > 0) result.set(qid, v);
   }
   return result;
