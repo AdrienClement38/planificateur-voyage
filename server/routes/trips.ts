@@ -6,6 +6,7 @@ import { trips, tripMembers } from "../db/schema";
 import { requireAuth } from "../auth/middleware";
 import { loadTripAggregate } from "../services/trip-aggregate";
 import { broadcastTrip, broadcastTripDeleted } from "../realtime";
+import { fetchPlaceActivities } from "../services/places";
 
 const router = Router();
 router.use(requireAuth);
@@ -17,6 +18,18 @@ async function getMembership(tripId: string, userId: string) {
     .from(tripMembers)
     .where(and(eq(tripMembers.tripId, tripId), eq(tripMembers.userId, userId)));
   return m ?? null;
+}
+
+/**
+ * Pré-chauffe les suggestions EN ARRIÈRE-PLAN dès qu'une destination est choisie
+ * (création / sélection). Quand l'utilisateur ouvre l'onglet Suggestions, le
+ * cache Wikidata + vues est déjà chaud → affichage quasi instantané. Stratégie
+ * « fire-and-forget » : ne bloque JAMAIS la réponse, et toute erreur est avalée.
+ */
+function warmSuggestions(destination?: string | null): void {
+  const d = destination?.trim();
+  if (!d) return;
+  void fetchPlaceActivities(d).catch(() => {});
 }
 
 const createSchema = z.object({
@@ -77,6 +90,9 @@ router.post("/", async (req, res) => {
     .insert(tripMembers)
     .values({ tripId: trip.id, userId: req.user!.id, role: "owner" });
 
+  // Destination déjà choisie à la création → on pré-chauffe les suggestions.
+  warmSuggestions(parsed.data.selectedDestination);
+
   res.status(201).json({ trip: await loadTripAggregate(trip.id) });
 });
 
@@ -108,6 +124,8 @@ router.patch("/:id", async (req, res) => {
   if (Object.keys(parsed.data).length > 0) {
     await db.update(trips).set(parsed.data).where(eq(trips.id, req.params.id));
   }
+  // Destination (re)sélectionnée → pré-chauffe les suggestions en arrière-plan.
+  warmSuggestions(parsed.data.selectedDestination);
   {
     const trip = await loadTripAggregate(req.params.id);
     broadcastTrip(req.params.id, trip);

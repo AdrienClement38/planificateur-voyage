@@ -1144,12 +1144,32 @@ async function enrichWikiMedia(places: PlaceActivity[]): Promise<void> {
  * Dédoublonné par nom normalisé (sans accents), on garde le tout (les catégories
  * servent au filtre UI).
  */
-export async function fetchPlaceActivities(destination: string): Promise<PlaceActivity[]> {
-  try {
-    const key = destination.trim().toLowerCase();
-    const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < hit.ttl) return hit.places;
+const inFlight = new Map<string, Promise<PlaceActivity[]>>();
 
+export async function fetchPlaceActivities(destination: string): Promise<PlaceActivity[]> {
+  const key = destination.trim().toLowerCase();
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < hit.ttl) return hit.places;
+  // Déduplication des requêtes EN COURS : si un fetch pour cette destination
+  // tourne déjà (ex. pré-chauffe en arrière-plan à la création du voyage), on
+  // PARTAGE sa promesse au lieu d'en lancer un 2nd → zéro double travail, et
+  // l'appelant récupère le résultat dès qu'il est prêt (au lieu de refetcher).
+  const running = inFlight.get(key);
+  if (running) return running;
+  const p = doFetchPlaceActivities(destination, key);
+  inFlight.set(key, p);
+  try {
+    return await p;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function doFetchPlaceActivities(
+  destination: string,
+  key: string,
+): Promise<PlaceActivity[]> {
+  try {
     const geo = await geocode(destination);
     if (!geo) return [];
 
