@@ -403,11 +403,24 @@ async function sparqlItemSet(sparql: string, ms: number): Promise<Set<string> | 
  */
 async function wikidataPlaceFilter(qids: string[]): Promise<Set<string> | null> {
   if (qids.length === 0) return new Set();
-  const values = qids.map((q) => `wd:${q}`).join(" ");
-  const sparql =
-    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
-    `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } }`;
-  return sparqlItemSet(sparql, 12000);
+  // Découpe en lots de 100 : une requête P279* sur 100 items est bien plus rapide
+  // (et bien moins sujette au timeout) que sur 220. Lots en PARALLÈLE → même temps
+  // mural, mais chacun fiable. Si UN lot échoue franchement → échec global (null).
+  const chunks: string[][] = [];
+  for (let i = 0; i < qids.length; i += 100) chunks.push(qids.slice(i, i + 100));
+  const results = await Promise.all(
+    chunks.map((c) => {
+      const values = c.map((q) => `wd:${q}`).join(" ");
+      const sparql =
+        `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
+        `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } }`;
+      return sparqlItemSet(sparql, 12000);
+    }),
+  );
+  if (results.some((r) => r === null)) return null;
+  const set = new Set<string>();
+  for (const r of results) for (const id of r!) set.add(id);
+  return set;
 }
 
 /**
@@ -496,6 +509,12 @@ async function wikidataAround(
  * monument est consulté toute l'année → notoriété vraiment touristique. API REST
  * par article (pas de lot) : concurrence limitée (6) + 1 réessai anti-throttle.
  */
+// Cache LONG des vues (14 j) : les vues bougent lentement, mais l'API REST est
+// par-article + throttlée → on évite de la re-solliciter. Une fois chaud, le tri
+// est quasi instantané (et les lieux partagés entre villes profitent du cache).
+const PV_CACHE = new Map<string, { at: number; v: number }>();
+const PV_TTL = 14 * 24 * 60 * 60 * 1000;
+
 async function wikiPageviews(lang: string, titles: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (titles.length === 0) return out;
@@ -505,22 +524,26 @@ async function wikiPageviews(lang: string, titles: string[]): Promise<Map<string
   const start = `${now.getFullYear() - 3}${mm}0100`; // 3 ans avant
 
   const one = async (title: string): Promise<number> => {
+    const key = `${lang}|${title}`;
+    const hit = PV_CACHE.get(key);
+    if (hit && now.getTime() - hit.at < PV_TTL) return hit.v;
     const enc = encodeURIComponent(title.replace(/ /g, "_"));
     const url =
       `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/` +
       `${lang}.wikipedia/all-access/all-agents/${enc}/monthly/${start}/${end}`;
-    let data = (await fetchJson(url, 8000)) as { items?: Array<{ views?: number }> } | null;
+    let data = (await fetchJson(url, 7000)) as { items?: Array<{ views?: number }> } | null;
     if (!data) {
-      await new Promise((r) => setTimeout(r, 400)); // réessai (throttle/transitoire)
-      data = (await fetchJson(url, 8000)) as { items?: Array<{ views?: number }> } | null;
+      await new Promise((r) => setTimeout(r, 200)); // 1 réessai court (transitoire)
+      data = (await fetchJson(url, 7000)) as { items?: Array<{ views?: number }> } | null;
     }
     let s = 0;
     for (const it of data?.items ?? []) s += it.views ?? 0;
+    if (data) PV_CACHE.set(key, { at: now.getTime(), v: s }); // ne cache PAS un échec (null)
     return s;
   };
 
-  // Vagues de 6 requêtes concurrentes max (l'API REST throttle les rafales).
-  const CONC = 6;
+  // Vagues de 16 requêtes concurrentes (compromis vitesse / throttle).
+  const CONC = 16;
   for (let i = 0; i < titles.length; i += CONC) {
     const slice = titles.slice(i, i + CONC);
     const views = await Promise.all(slice.map((t) => one(t)));
@@ -602,16 +625,16 @@ async function discoverWikidata(
   // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
   // événements, traités, œuvres, bateaux… géotaggés au même endroit.
   const placeIds = await wikidataPlaceFilter(candidates.map(([id]) => id));
-  // FAIL-SAFE : si le filtre « lieu » a échoué (réseau/throttle même après
-  // réessai), on n'invente RIEN — Wikidata renvoie vide pour ce fetch (→ cache
-  // court 15 min, auto-réparation) au lieu de laisser fuir des non-lieux (œuvres,
-  // bateaux, compétitions…). C'est le « fail-open » d'avant qui cassait tout.
-  if (placeIds === null) return [];
-
-  // Survivants = vrais lieux. Puis PURGE secondaire (rivières/chaînes/communes
-  // séparées) faite À PART sur ce petit lot (~50) : légère, et non bloquante (si
-  // elle échoue, on ne purge rien — les vues classent ces parasites tout en bas).
-  const survivors = candidates.filter(([id]) => placeIds.has(id));
+  // FAIL-SAFE : si le filtre « lieu » échoue (réseau/throttle même après réessai),
+  // on NE retombe PAS sur Wikipédia (ordre pourri, source douteuse). On GARDE les
+  // candidats Wikidata — déjà pré-filtrés par WD_BAD_TYPES (œuvres, homonymies,
+  // supermarchés…) — et on les classe par les VRAIES VUES juste après : ordre
+  // correct, garbage très limité. État RARE (filtre découpé + réessais).
+  const survivors = placeIds
+    ? candidates.filter(([id]) => placeIds.has(id))
+    : candidates;
+  // PURGE secondaire (rivières/chaînes/communes séparées) sur ce petit lot (~50) :
+  // légère et non bloquante (échec → on ne purge rien, les vues les classent bas).
   const drop = await wikidataPurge(survivors.map(([id]) => id));
 
   const out: PlaceActivity[] = [];
@@ -638,7 +661,10 @@ async function discoverWikidata(
   // (nombre de langues, qui sur-classe communes/rivières) par les VRAIES vues
   // Wikipédia FR+EN. Repli sur les sitelinks pour les rares lieux sans article
   // consulté. C'est ce tri (via `fame`) que la curation finale réutilise.
-  const popularity = await fetchPopularity(outIds);
+  // On ne sonde les vues que pour les ~40 meilleurs candidats (par sitelinks) :
+  // c'est là que se joue le re-classement utile (page 1-2), et ça limite le
+  // nombre d'appels REST. Le reste garde son rang sitelinks (queue de liste).
+  const popularity = await fetchPopularity(outIds.slice(0, 40));
   out.forEach((p, i) => {
     const views = popularity.get(outIds[i]);
     if (views && views > 0) p.fame = views;
