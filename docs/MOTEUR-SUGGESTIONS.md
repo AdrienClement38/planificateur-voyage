@@ -55,8 +55,10 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
 | Chaînes/massifs | Q46831 | Sommets individuels (aiguille du Midi) |
 | Supermarchés (Carrefour) | chaîne Q507619/Q18043413 | Grands magasins (Galeries Lafayette) |
 | Œuvres en standalone (Le Cri, La Pietà) | groupe-de-peintures Q18573970 + page d'homonymie Q4167410 en bad-types ; **œuvre (sculpture/peinture) DANS un édifice** (P276 → musée/église/palais) en purge | Statues **extérieures** (Manneken-Pis, Statue de la Liberté) |
+| Œuvres **disparues/détruites** (Athéna Parthénos, Promachos, Lemnia) | **« œuvre d'art perdue » Q4140840** (P31/P279*) en purge — l'original n'existe plus, mais reste géotaggé sur l'Acropole et bien classé (sitelinks ≥17) | Statues **extérieures existantes** (Liberté, Manneken-Pis) ; **sites archéologiques** (Agora, Aréopage) — aucun n'est une « œuvre perdue » |
 | Événements (conclave, Journée des Tuiles) | bad-types + NOISE_BLOCK | — |
 | Bateaux-objets (Fram) | exclus du filtre lieu | Bateaux-LIEUX (HMS Belfast) — *à ajouter, cf. Reste à faire* |
+| Gares-transit UTILITAIRES (Saint-Charles, aéroports, Penn Station) — **RÉTROGRADÉES, pas supprimées** | transport P31/P279* (gare Q55488, métro Q928830, gare routière Q494829, aéroport Q1248784) SANS le tag **« site touristique » Q570116 en P31 DIRECT** → drapeau `demote` → tout en bas du tri (`wikidataDemoteTransit`). Règle GÉNÉRALE & MONDIALE, langue-agnostique | **Gares-MONUMENTS** marquées site touristique (Grand Central) ; **TOUS les STADES** (Vélodrome, Camp Nou, Wembley, panathénaïque — icônes, gardés à leur rang réel) |
 
 ## « Œuvres à voir » (volet sur les cartes)
 
@@ -84,10 +86,18 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
   régénération à l'autre. Fix : champ **`views` distinct de `fame`** ; au tri
   final, **palier 1 = lieux AVEC vues** (triés par vues), **palier 2 = les autres**
   (par `fame`). Un échec de récup ⇒ au pire en tête du palier 2, jamais enfoui.
+  *(Un **palier 0** s'ajoute en tête : les gares-transit `demote` tout en bas, cf.
+  « Filtres & purges ».)*
 - **Récup des vues fiabilisée** : réessais avec **back-off** (l'API REST throttle
   vite en rafale), un échec = `null` (**≠ « 0 vue »**, non mis en cache),
   **concurrence 6** (＞ fiable que 16), **EN sondé seulement en secours** (lieux
   sans vue FR) ⇒ ~2× moins d'appels REST, donc moins de throttle.
+- **Purge « œuvre perdue » ISOLÉE** : la purge des œuvres disparues (Q4140840,
+  Athéna Parthénos…) tourne en **requête SÉPARÉE, en parallèle** de la purge lourde
+  (rivières/communes/œuvre-dans-édifice). Un seul `P31/P279*` → réponse <1 s, donc
+  elle **aboutit même quand la requête lourde expire** (Wikidata sous charge) :
+  cette purge ciblée n'est jamais l'otage de la latence des autres branches. Les
+  deux sont fail-safe indépendamment (échec de l'une ⇒ on ne purge pas sa part).
 
 ## Pré-chargement + cache (latence invisible)
 
@@ -116,10 +126,14 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
      foot** (Liga, Serie A, Bundesliga) → à Oslo le stade **remonte** #4 → #3 et
      tout se **tasse** (~290k, 4 % d'écart) = classement fragile. Le **FR pur**
      reste le meilleur séparateur stade-attraction / stade-pas-touristique.
-2. **Athènes — Athéna Parthénos** (statue ANTIQUE disparue) sort comme un lieu
-   (#3). Même classe de bug que La Pietà/Le Cri (œuvre-en-standalone) : passe le
-   filtre « lieu » et n'a pas de P276 → édifice exploitable par la purge. À
-   purger proprement (cf. Reste à faire).
+2. ~~**Athènes — Athéna Parthénos**~~ **RÉSOLU** : la statue de Phidias (Q2070605,
+   détruite dans l'Antiquité) sortait #3. Elle passe le filtre « lieu » car *statue
+   colossale* → *statue* → *structure architecturale* (Q811979) ; et son P276 =
+   Parthénon (un **temple**, hors allow-list édifices) la faisait échapper à la purge
+   « œuvre dans édifice ». Fix : **purge dédiée P31/P279* → « œuvre d'art perdue »
+   (Q4140840)** — vire aussi Athéna Promachos (Q755221) & Lemnia (Q950701), mêmes
+   colosses perdus, **sans toucher** statues existantes ni sites archéologiques
+   (vérifié : aucun n'est sous-classe de Q4140840). Voir « Filtres & purges ».
 3. **Latence à froid ~10-27 s** (API vues par-article + throttle). Mitigée par la
    pré-chauffe + le cache, mais **cache EN MÉMOIRE → perdu au redémarrage**
    (problème sur AlwaysData). **Fix durable = persister les vues en base.**
@@ -150,20 +164,33 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - **Grenoble** : **fort de la Bastille**, **téléphérique (les Bulles)**, musée de
   Grenoble / Journée des Tuiles (événement).
 - **Lyon** : Fourvière, place Bellecour, Vieux Lyon, musée des Beaux-Arts.
-- **Athènes** : Parthénon, Érechthéion, Agora, Olympiéion (le stade
-  **panathénaïque** est un MONUMENT, doit rester).
+- **Marseille** : **stade Vélodrome** (icône, GARDÉ #1), Bonne Mère, château d'If,
+  Calanques, Vieux-Port / **Marseille-Saint-Charles & Aix-TGV** (gares-transit →
+  RÉTROGRADÉES, hors page 1).
+- **New York** : Liberté, Empire State, Central Park / **Penn Station, aéroports
+  LaGuardia & Newark** (transit → rétrogradés) ; **Grand Central GARDÉ** (gare-
+  monument « site touristique »).
+- **Athènes** : Parthénon, Acropole, Érechthéion, Agora, Aréopage, Olympiéion (le
+  stade **panathénaïque** est un MONUMENT, doit rester) / **Athéna Parthénos,
+  Promachos, Lemnia** (statues antiques DÉTRUITES = « œuvre d'art perdue », ne
+  doivent PAS sortir).
 
 ## Reste à faire
 
 1. **Page `/banc` interactive** (idée d'Adrien) : annoter les suggestions par
    ville en mode ludique (✓ incontournable / ❌ à virer / ⭐ manquant) → remplit le
    banc automatiquement. Page isolée, zéro risque.
-2. **Athéna Parthénos** (Athènes) : purger l'œuvre-en-standalone (cf. Limite 2).
+2. ~~**Athéna Parthénos** (Athènes)~~ **FAIT** : purge « œuvre d'art perdue »
+   Q4140840 (cf. Limite 2 & « Filtres & purges »).
 3. **Persister le cache des vues** en base (fix AlwaysData, cf. Limite 3).
 4. **HMS Belfast** : type « navire-musée » = lieu visitable (à ajouter au filtre).
 5. **Dédoublonnage par adresse/coordonnées** (Grenoble : musée de la Résistance vs
    musée des Chasseurs alpins — distincts ? vérifier par l'adresse).
 6. Coder le **banc** en test Vitest (lance le vrai code, vérifie DOIT/NE DOIT PAS).
+7. **Gares-monuments SANS le tag « site touristique »** (ex. St-Pancras Grade I,
+   Gare de Lyon) : actuellement RÉTROGRADÉES à tort (soft, jamais supprimées). Les
+   remonter via un patrimoine FORT, sans réintroduire le piège de l'« Inventaire
+   général » (Q16739336, fourre-tout de 21k entités) ni de logique franco-centrée.
 7. (Abandonné) ~~Vues en langue locale~~ : rejeté (les locaux suivent le foot) ;
    ~~multi-langues~~ : testé, ré-injecte le foot. Le **FR pur** est la réponse.
 
@@ -186,3 +213,6 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - `97a8a36` tri sur vues FR pures (Oslo cohérent, stade enterré sans malus)
 - `81f690f` doc : Oslo résolu + arbitrages (Wembley, Athéna Parthénos)
 - `8b89329` fiabilité vues + tri 2 paliers (anti-cratering, ordre stable)
+- `f454888` doc : robustesse 2 paliers + Wembley clarifié (pas un bug)
+- *(ce commit)* purge « œuvre perdue » Q4140840 (Athéna Parthénos) + gares-transit
+  rétrogradées (Saint-Charles↓, Grand Central gardé) — stades tous conservés
