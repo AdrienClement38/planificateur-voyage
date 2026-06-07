@@ -489,43 +489,42 @@ async function wikidataAround(
 
 // ---- Notoriété TOURISTIQUE : vraies vues Wikipédia (≠ nombre de langues) ----
 
-/** Vues Wikipédia (60 derniers jours) pour des titres d'articles, par langue. */
+/**
+ * Vues Wikipédia sur les 3 DERNIÈRES ANNÉES (≠ 60 j) pour des titres d'articles,
+ * par langue. Fenêtre LONGUE pour LISSER les pics d'actu/sport : un stade
+ * explose les jours de match (Wembley passait devant Big Ben sur 60 j !) mais un
+ * monument est consulté toute l'année → notoriété vraiment touristique. API REST
+ * par article (pas de lot) : concurrence limitée (6) + 1 réessai anti-throttle.
+ */
 async function wikiPageviews(lang: string, titles: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  for (let i = 0; i < titles.length; i += 50) {
-    const batch = titles.slice(i, i + 50);
-    const byTitle = new Map<string, number>();
-    const norm = new Map<string, string>();
-    // L'API ne calcule les vues que pour ~15 titres par réponse puis pagine via
-    // `continue` (pvipcontinue) : on suit la continuation jusqu'à tout obtenir.
-    let cont: Record<string, string> | null = null;
-    let guard = 0;
-    do {
-      const contQs = cont
-        ? Object.entries(cont)
-            .map(([k, v]) => `&${k}=${encodeURIComponent(v)}`)
-            .join("")
-        : "";
-      const url =
-        `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2` +
-        `&prop=pageviews&pvipdays=60&titles=${encodeURIComponent(batch.join("|"))}${contQs}`;
-      const data = (await fetchJson(url, 8000)) as {
-        continue?: Record<string, string>;
-        query?: {
-          normalized?: Array<{ from?: string; to?: string }>;
-          pages?: Array<{ title?: string; pageviews?: Record<string, number | null> }>;
-        };
-      } | null;
-      for (const pg of data?.query?.pages ?? []) {
-        if (!pg.title) continue;
-        let s = 0;
-        for (const v of Object.values(pg.pageviews ?? {})) s += v ?? 0;
-        if (s > 0) byTitle.set(pg.title, (byTitle.get(pg.title) ?? 0) + s);
-      }
-      for (const n of data?.query?.normalized ?? []) if (n.from && n.to) norm.set(n.from, n.to);
-      cont = data?.continue ?? null;
-    } while (cont && ++guard < 12);
-    for (const t of batch) out.set(t, byTitle.get(norm.get(t) ?? t) ?? 0);
+  if (titles.length === 0) return out;
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const end = `${now.getFullYear()}${mm}0100`; // 1er du mois courant
+  const start = `${now.getFullYear() - 3}${mm}0100`; // 3 ans avant
+
+  const one = async (title: string): Promise<number> => {
+    const enc = encodeURIComponent(title.replace(/ /g, "_"));
+    const url =
+      `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/` +
+      `${lang}.wikipedia/all-access/all-agents/${enc}/monthly/${start}/${end}`;
+    let data = (await fetchJson(url, 8000)) as { items?: Array<{ views?: number }> } | null;
+    if (!data) {
+      await new Promise((r) => setTimeout(r, 400)); // réessai (throttle/transitoire)
+      data = (await fetchJson(url, 8000)) as { items?: Array<{ views?: number }> } | null;
+    }
+    let s = 0;
+    for (const it of data?.items ?? []) s += it.views ?? 0;
+    return s;
+  };
+
+  // Vagues de 6 requêtes concurrentes max (l'API REST throttle les rafales).
+  const CONC = 6;
+  for (let i = 0; i < titles.length; i += CONC) {
+    const slice = titles.slice(i, i + CONC);
+    const views = await Promise.all(slice.map((t) => one(t)));
+    slice.forEach((t, k) => out.set(t, views[k]));
   }
   return out;
 }
@@ -562,10 +561,9 @@ async function fetchPopularity(qids: string[]): Promise<Map<string, number>> {
     if (b.frTitle?.value) frOf.set(qid, b.frTitle.value);
     if (b.enTitle?.value) enOf.set(qid, b.enTitle.value);
   }
-  const [frViews, enViews] = await Promise.all([
-    wikiPageviews("fr", [...new Set(frOf.values())]),
-    wikiPageviews("en", [...new Set(enOf.values())]),
-  ]);
+  // Séquentiel (FR puis EN) : on ne double pas la concurrence vers l'API REST.
+  const frViews = await wikiPageviews("fr", [...new Set(frOf.values())]);
+  const enViews = await wikiPageviews("en", [...new Set(enOf.values())]);
   for (const qid of qids) {
     const v =
       (frOf.has(qid) ? frViews.get(frOf.get(qid)!) ?? 0 : 0) +
