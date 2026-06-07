@@ -724,18 +724,20 @@ async function highlightsChunk(names: string[]): Promise<Map<string, PlaceHighli
     `SELECT DISTINCT ?lbl ?artLabel ?img ?sl WHERE {` +
     `VALUES ?lbl { ${vals} }` +
     `?place rdfs:label ?lbl.` +
-    // Œuvre rattachée au lieu DIRECTEMENT (P276 emplacement / P195 collection)
-    // OU via une de ses PARTIES (P527) : capte les chefs-d'œuvre en plusieurs
-    // versions (« groupe de peintures ») dont une version est dans ce musée —
-    // ex. Le Cri (sl 78) au musée Munch, invisible sinon (versions à sl 2).
-    `?art (wdt:P276|wdt:P195|wdt:P527/wdt:P276|wdt:P527/wdt:P195) ?place.` +
+    // Œuvre rattachée au lieu : emplacement (P276), collection (P195) — y compris
+    // une SOUS-collection « partie de » l'institution (P361*, ex. La Joconde dont
+    // la collection est le « département des peintures » du Louvre) — OU via une
+    // de ses PARTIES (P527 : chefs-d'œuvre en plusieurs versions, ex. Le Cri au
+    // musée Munch dont les versions physiques sont à sl 2, invisibles sinon).
+    `?art (wdt:P276|wdt:P195/wdt:P361*|wdt:P527/wdt:P276|wdt:P527/wdt:P195/wdt:P361*) ?place.` +
     `?art wdt:P31 ?t. VALUES ?t { ${WD_ART_TYPES.join(" ")} }` +
     `?art wikibase:sitelinks ?sl. FILTER(?sl >= 5)` +
     `OPTIONAL { ?art wdt:P18 ?img. }` +
     `?art rdfs:label ?artLabel. FILTER(lang(?artLabel) = "fr")` +
     `} ORDER BY ?lbl DESC(?sl) LIMIT 400`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
-  const data = (await fetchJson(url, 12000)) as {
+  // 15 s : le chemin sous-collection (P361*) sur un musée géant (Louvre) est lourd.
+  const data = (await fetchJson(url, 15000)) as {
     results?: {
       bindings?: Array<{
         lbl?: { value?: string };
