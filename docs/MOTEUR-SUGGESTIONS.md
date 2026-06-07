@@ -28,9 +28,16 @@ inventée** (jamais de note/prix/avis bidon — règle absolue).
 
 - **PAS les sitelinks** (nombre de langues Wikipédia) : c'est encyclopédique, pas
   touristique → ça sur-classe communes voisines, rivières, chaînes de montagnes.
-- **Vues Wikipédia réelles sur 3 ANS** (FR + EN), via l'API REST par article
+- **Vues Wikipédia réelles sur 3 ANS**, via l'API REST par article
   (`/metrics/pageviews/per-article/...`). Fenêtre LONGUE = lisse les pics
   actu/sport (sur 60 j, Wembley passait #1 devant Big Ben !).
+- **Vues FR PURES** quand l'article FR existe (audience de l'app = touristes
+  FRANÇAIS) ; l'EN ne sert que de SECOURS (réduit à l'échelle FR, ×0,1) pour les
+  lieux sans article FR. L'EN est gonflé par l'intérêt SPORTIF **mondial** (un
+  stade explose en EN via le foot) : on l'ignore quand on a du FR. C'est
+  l'audience FR — et non un malus — qui distingue le **stade-attraction** (Camp
+  Nou, que les Français visitent → vues FR réelles, reste #2 à Barcelone) du
+  **stade-pas-touristique** (Ullevaal à Oslo → vues FR faibles, tombe à #6).
 - Repli sitelinks si pas de vues. **Aucun bonus/malus bidouillé** (règle posée
   par Adrien : tri par notoriété pure).
 - Sondé sur le **top-40 candidats** + **concurrence 16** + **cache 14 j** (sinon
@@ -82,14 +89,22 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
 
 ## Limites connues (à traiter)
 
-1. **Oslo & co (pays non-anglophones)** : tri FR+EN → **sous-classe les sites
-   culturels LOCAUX** (musée Munch, opéra) au profit du mondialement connu (stade
-   de foot via Ullevaal). **Fix = ajouter les vues en langue LOCALE** (déduite du
-   pays via le geocode : norvégien pour Oslo, etc.).
-2. **Latence à froid ~10-27 s** (API vues par-article + throttle). Mitigée par la
+1. ~~Oslo sous-classé~~ **RÉSOLU** (commit `97a8a36`) : tri sur **vues FR pures**
+   → opéra/Munch/palais remontent, Ullevaal tombe #2 → #6. Voir « Tri ».
+   - **Arbitrage restant — stades célèbres en France** : le FR-pur retire la
+     contamination foot ÉTRANGÈRE (Ullevaal, inconnu des Français) mais **pas la
+     contamination foot FRANÇAISE**. Le **stade de Wembley** ressort #3 à Londres
+     (les fans FR le consultent), au-dessus du British Museum. C'est le signal
+     « vues » honnête ; aucun malus stade n'est posé (règle d'Adrien). À trancher
+     avec lui si gênant (la langue locale n'aide pas : EN local = EN foot).
+2. **Athènes — Athéna Parthénos** (statue ANTIQUE disparue) sort comme un lieu
+   (#3). Même classe de bug que La Pietà/Le Cri (œuvre-en-standalone) : passe le
+   filtre « lieu » et n'a pas de P276 → édifice exploitable par la purge. À
+   purger proprement (cf. Reste à faire).
+3. **Latence à froid ~10-27 s** (API vues par-article + throttle). Mitigée par la
    pré-chauffe + le cache, mais **cache EN MÉMOIRE → perdu au redémarrage**
    (problème sur AlwaysData). **Fix durable = persister les vues en base.**
-3. Vénus de Milo échappe à la purge « œuvre dans édifice » (sa salle n'est pas
+4. Vénus de Milo échappe à la purge « œuvre dans édifice » (sa salle n'est pas
    taguée comme bâtiment) — mineur, sans risque.
 
 ## Banc de test (vérité terrain — à coder en test auto)
@@ -105,9 +120,8 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
   Seine / Louvre→Joconde, Orsay→Origine du monde.
 - **Rome** : Colisée, St-Pierre, Trevi, Panthéon, Sixtine / Statut de Rome,
   conclave, La Pietà-standalone / Vatican→Création d'Adam.
-- **Oslo** : Munch, citadelle d'Akershus, opéra, Frognerparken, palais royal /
-  Le Cri-standalone, Coupe de Norvège / Munch→Le Cri. *(⚠ ordre à corriger via
-  vues locales)*
+- **Oslo** : palais royal, parc Vigeland, opéra, Munch, citadelle d'Akershus
+  (Ullevaal bas) / Le Cri-standalone, Coupe de Norvège / Munch→Le Cri.
 - **Chamonix** : mont Blanc, aiguille du Midi, Mer de Glace, **téléphérique du
   Montenvers** / Courmayeur, Doire baltée, Alpes occidentales.
 - **Barcelone** : Sagrada Família, parc Güell, Casa Batlló, Casa Milà.
@@ -147,3 +161,4 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - `da874ef` fiabilité + latence du tri par vues
 - `88bddce` œuvres dans un édifice écartées (La Pietà)
 - `06c40c5` pré-chargement arrière-plan + déduplication
+- `97a8a36` tri sur vues FR pures (Oslo cohérent, stade enterré sans malus)
