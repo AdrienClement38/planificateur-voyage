@@ -77,6 +77,17 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
   Wikidata** (pré-filtrés bad-types) **triés par vues** — surtout PAS de repli
   Wikipédia (ordre pourri) ni de fuite de non-lieux.
 - Réessais sur toutes les requêtes SPARQL ; lots parallèles.
+- **Tri en DEUX PALIERS — anti-mélange d'échelles** (commit `8b89329`) : `fame`
+  mélangeait les vraies vues (~10³-10⁵) et le repli liens/sitelinks (~10²). Si la
+  récup des vues d'un lieu MAJEUR échouait (throttle), il retombait à ~200 et
+  **plongeait sous un lieu mineur** ayant eu ses vues → ordre **instable** d'une
+  régénération à l'autre. Fix : champ **`views` distinct de `fame`** ; au tri
+  final, **palier 1 = lieux AVEC vues** (triés par vues), **palier 2 = les autres**
+  (par `fame`). Un échec de récup ⇒ au pire en tête du palier 2, jamais enfoui.
+- **Récup des vues fiabilisée** : réessais avec **back-off** (l'API REST throttle
+  vite en rafale), un échec = `null` (**≠ « 0 vue »**, non mis en cache),
+  **concurrence 6** (＞ fiable que 16), **EN sondé seulement en secours** (lieux
+  sans vue FR) ⇒ ~2× moins d'appels REST, donc moins de throttle.
 
 ## Pré-chargement + cache (latence invisible)
 
@@ -91,12 +102,20 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
 
 1. ~~Oslo sous-classé~~ **RÉSOLU** (commit `97a8a36`) : tri sur **vues FR pures**
    → opéra/Munch/palais remontent, Ullevaal tombe #2 → #6. Voir « Tri ».
-   - **Arbitrage restant — stades célèbres en France** : le FR-pur retire la
-     contamination foot ÉTRANGÈRE (Ullevaal, inconnu des Français) mais **pas la
-     contamination foot FRANÇAISE**. Le **stade de Wembley** ressort #3 à Londres
-     (les fans FR le consultent), au-dessus du British Museum. C'est le signal
-     « vues » honnête ; aucun malus stade n'est posé (règle d'Adrien). À trancher
-     avec lui si gênant (la langue locale n'aide pas : EN local = EN foot).
+   - **Arbitrage produit (PAS un bug) — stades célèbres** : le **stade de Wembley**
+     ressort #3 à Londres, au-dessus du British Museum. Vérifié : **339 499 vues FR
+     sur 3 ans** (vs 178 437 pour le British Museum) — les Français consultent
+     VRAIMENT Wembley (concerts, foot anglais, FA Cup). Ce n'est donc PAS une
+     contamination EN ni un bug : c'est le **vrai signal FR**, cohérent avec la
+     règle « tri par notoriété réelle, aucun malus » (idem Camp Nou, gardé #2).
+     Limite de fond : les vues = **intérêt/recherche**, pas **priorité de visite**.
+     Aucun correctif par les vues ne corrige ça (cf. ci-dessous). À trancher avec
+     Adrien : accepter (honnête) ou poser un signal « fonction = sport vs culture »
+     (mais ça toucherait aussi Camp Nou, que l'on veut garder haut).
+   - **Multi-langues testé et ÉCARTÉ** : sommer FR+EN+ES+IT+DE+ZH **ré-injecte du
+     foot** (Liga, Serie A, Bundesliga) → à Oslo le stade **remonte** #4 → #3 et
+     tout se **tasse** (~290k, 4 % d'écart) = classement fragile. Le **FR pur**
+     reste le meilleur séparateur stade-attraction / stade-pas-touristique.
 2. **Athènes — Athéna Parthénos** (statue ANTIQUE disparue) sort comme un lieu
    (#3). Même classe de bug que La Pietà/Le Cri (œuvre-en-standalone) : passe le
    filtre « lieu » et n'a pas de P276 → édifice exploitable par la purge. À
@@ -125,8 +144,9 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - **Chamonix** : mont Blanc, aiguille du Midi, Mer de Glace, **téléphérique du
   Montenvers** / Courmayeur, Doire baltée, Alpes occidentales.
 - **Barcelone** : Sagrada Família, parc Güell, Casa Batlló, Casa Milà.
-- **Londres** : British Museum, tour de Londres, Buckingham, Westminster, Tower
-  Bridge, London Eye, **HMS Belfast** *(à faire apparaître)*.
+- **Londres** : Big Ben, Buckingham, **stade de Wembley** (légitimement haut :
+  339k vues FR), tour de Londres, Tower Bridge, Westminster, British Museum, London
+  Eye, **HMS Belfast** *(à faire apparaître)*.
 - **Grenoble** : **fort de la Bastille**, **téléphérique (les Bulles)**, musée de
   Grenoble / Journée des Tuiles (événement).
 - **Lyon** : Fourvière, place Bellecour, Vieux Lyon, musée des Beaux-Arts.
@@ -138,12 +158,14 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 1. **Page `/banc` interactive** (idée d'Adrien) : annoter les suggestions par
    ville en mode ludique (✓ incontournable / ❌ à virer / ⭐ manquant) → remplit le
    banc automatiquement. Page isolée, zéro risque.
-2. **Vues en langue locale** (fix Oslo, cf. Limite 1).
-3. **Persister le cache des vues** en base (fix AlwaysData, cf. Limite 2).
+2. **Athéna Parthénos** (Athènes) : purger l'œuvre-en-standalone (cf. Limite 2).
+3. **Persister le cache des vues** en base (fix AlwaysData, cf. Limite 3).
 4. **HMS Belfast** : type « navire-musée » = lieu visitable (à ajouter au filtre).
 5. **Dédoublonnage par adresse/coordonnées** (Grenoble : musée de la Résistance vs
    musée des Chasseurs alpins — distincts ? vérifier par l'adresse).
 6. Coder le **banc** en test Vitest (lance le vrai code, vérifie DOIT/NE DOIT PAS).
+7. (Abandonné) ~~Vues en langue locale~~ : rejeté (les locaux suivent le foot) ;
+   ~~multi-langues~~ : testé, ré-injecte le foot. Le **FR pur** est la réponse.
 
 ## Commits clés de la session (branche `feat/refonte-dashboard`)
 
@@ -162,3 +184,5 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - `88bddce` œuvres dans un édifice écartées (La Pietà)
 - `06c40c5` pré-chargement arrière-plan + déduplication
 - `97a8a36` tri sur vues FR pures (Oslo cohérent, stade enterré sans malus)
+- `81f690f` doc : Oslo résolu + arbitrages (Wembley, Athéna Parthénos)
+- `8b89329` fiabilité vues + tri 2 paliers (anti-cratering, ordre stable)
