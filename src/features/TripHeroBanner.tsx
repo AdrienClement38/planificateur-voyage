@@ -1,12 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { ChevronDown, Link2, Pencil, X } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
+import CityAutocomplete from "../components/CityAutocomplete";
 
 const BUDGET_TYPES = ["Économique", "Modéré", "Luxe"] as const;
 
 /** Avatar par défaut (dicebear) si le membre n'a pas d'image. */
 function avatarUrl(name: string, custom?: string | null): string {
-  return custom || "https://api.dicebear.com/7.x/adventurer/svg?seed=" + encodeURIComponent(name);
+  return (
+    custom ||
+    "https://api.dicebear.com/7.x/adventurer/svg?seed=" +
+      encodeURIComponent(name)
+  );
 }
 
 /**
@@ -53,7 +58,9 @@ export default function TripHeroBanner() {
       name: activeTrip.name,
       selectedDestination: activeTrip.selectedDestination ?? "",
       targetDays: activeTrip.targetDays,
-      budgetType: (BUDGET_TYPES.includes(activeTrip.budgetType as (typeof BUDGET_TYPES)[number])
+      budgetType: (BUDGET_TYPES.includes(
+        activeTrip.budgetType as (typeof BUDGET_TYPES)[number],
+      )
         ? activeTrip.budgetType
         : "Modéré") as (typeof BUDGET_TYPES)[number],
       description: activeTrip.description ?? "",
@@ -119,7 +126,10 @@ export default function TripHeroBanner() {
 
             {switcherOpen && (
               <>
-                <div className="fixed inset-0 z-30" onClick={() => setSwitcherOpen(false)} />
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setSwitcherOpen(false)}
+                />
                 <div className="absolute left-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl shadow-xl z-40 p-2 animate-fadeIn">
                   <div className="px-2 py-1.5">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
@@ -145,10 +155,14 @@ export default function TripHeroBanner() {
                         >
                           <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800 truncate">
                             {t.name}
-                            {t.id === selectedTripId && <span className="text-indigo-600">✓</span>}
+                            {t.id === selectedTripId && (
+                              <span className="text-indigo-600">✓</span>
+                            )}
                           </span>
                           <span className="block text-[10px] text-slate-400 truncate mt-0.5">
-                            {t.selectedDestination || t.description || "Destination à définir"}
+                            {t.selectedDestination ||
+                              t.description ||
+                              "Destination à définir"}
                           </span>
                         </button>
                         <div className="flex items-center gap-1 shrink-0 pl-1.5">
@@ -157,7 +171,11 @@ export default function TripHeroBanner() {
                           </span>
                           <button
                             onClick={() => {
-                              if (confirm(`Supprimer le voyage « ${t.name} » ? (réservé au créateur)`))
+                              if (
+                                confirm(
+                                  `Supprimer le voyage « ${t.name} » ? (réservé au créateur)`,
+                                )
+                              )
                                 handleDeleteTrip(t.id);
                             }}
                             className="text-slate-300 hover:text-rose-500 p-1 rounded transition cursor-pointer"
@@ -185,7 +203,9 @@ export default function TripHeroBanner() {
 
           <div className="flex flex-wrap items-center gap-2 mt-2.5">
             <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg">
-              📍 {activeTrip.selectedDestination?.trim() || "Destination à définir"}
+              📍{" "}
+              {activeTrip.selectedDestination?.trim() ||
+                "Destination à définir"}
             </span>
             <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg">
               🗓️ {activeTrip.targetDays} jours
@@ -217,12 +237,16 @@ export default function TripHeroBanner() {
               title="Détail du budget estimé par voyageur"
             >
               <span className="flex flex-col items-start leading-tight">
-                <span className="text-[9px] uppercase tracking-wider opacity-80 font-bold">Budget / pers</span>
+                <span className="text-[9px] uppercase tracking-wider opacity-80 font-bold">
+                  Budget / pers
+                </span>
                 <span className="font-black text-base">
                   {budgetBreakdown.totalIndividual.toLocaleString("fr-FR")}€
                 </span>
               </span>
-              <ChevronDown className={`w-4 h-4 transition ${isBudgetDropdownOpen ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`w-4 h-4 transition ${isBudgetDropdownOpen ? "rotate-180" : ""}`}
+              />
             </button>
 
             {isBudgetDropdownOpen && (
@@ -251,16 +275,28 @@ export default function TripHeroBanner() {
                 </div>
                 <div className="space-y-2.5 pt-1.5 font-medium text-slate-300">
                   <div className="flex justify-between items-center text-[11px] border-b border-slate-800/60 pb-1.5">
-                    <span>🏠 Hébergement ({activeTrip.averageLodgingCostPerNight}€/nuit)</span>
-                    <span className="font-bold text-white font-mono">{budgetBreakdown.totalLodging}€</span>
+                    <span>
+                      🏠 Hébergement ({activeTrip.averageLodgingCostPerNight}
+                      €/nuit)
+                    </span>
+                    <span className="font-bold text-white font-mono">
+                      {budgetBreakdown.totalLodging}€
+                    </span>
                   </div>
                   <div className="flex justify-between items-center text-[11px] border-b border-slate-800/60 pb-1.5">
-                    <span>🚌 Transport local ({activeTrip.averageLocalTransportCostPerDay}€/jour)</span>
-                    <span className="font-bold text-white font-mono">{budgetBreakdown.totalLocalTransport}€</span>
+                    <span>
+                      🚌 Transport local (
+                      {activeTrip.averageLocalTransportCostPerDay}€/jour)
+                    </span>
+                    <span className="font-bold text-white font-mono">
+                      {budgetBreakdown.totalLocalTransport}€
+                    </span>
                   </div>
                   <div className="flex justify-between items-center text-[11px] border-b border-slate-800/60 pb-1.5">
                     <span>✨ Activités votées</span>
-                    <span className="font-bold text-white font-mono">{budgetBreakdown.activitiesCost}€</span>
+                    <span className="font-bold text-white font-mono">
+                      {budgetBreakdown.activitiesCost}€
+                    </span>
                   </div>
                   <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
                     <div className="flex justify-between items-center text-[11px]">
@@ -277,7 +313,9 @@ export default function TripHeroBanner() {
                       max="1400"
                       step="20"
                       value={activeTrip.externalTransportCost || 0}
-                      onChange={(e) => handleUpdateTransportValue(Number(e.target.value))}
+                      onChange={(e) =>
+                        handleUpdateTransportValue(Number(e.target.value))
+                      }
                       className="w-full accent-emerald-400 cursor-ew-resize h-1 bg-slate-800 rounded-lg"
                     />
                     <span className="block text-[9px] text-slate-400 text-right italic">
@@ -409,7 +447,8 @@ export default function TripHeroBanner() {
           >
             <div className="flex items-center justify-between">
               <h3 className="font-black text-lg text-slate-900 flex items-center gap-2">
-                <Pencil className="w-5 h-5 text-indigo-600" /> Modifier le voyage
+                <Pencil className="w-5 h-5 text-indigo-600" /> Modifier le
+                voyage
               </h3>
               <button
                 type="button"
@@ -429,7 +468,9 @@ export default function TripHeroBanner() {
                 required
                 maxLength={120}
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
               />
             </div>
@@ -438,13 +479,15 @@ export default function TripHeroBanner() {
               <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">
                 Destination
               </label>
-              <input
-                type="text"
-                maxLength={200}
+              {/* Même autocomplétion qu'à la création : sélectionner une vraie
+                  ville → destination propre et NON ambiguë (Viviers, Ardèche…). */}
+              <CityAutocomplete
                 value={form.selectedDestination}
-                onChange={(e) => setForm((f) => ({ ...f, selectedDestination: e.target.value }))}
+                onChange={(v) =>
+                  setForm((f) => ({ ...f, selectedDestination: v }))
+                }
                 placeholder="Laisser vide pour « à définir »"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
+                inputClassName="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
               />
             </div>
 
@@ -461,12 +504,17 @@ export default function TripHeroBanner() {
                   onChange={(e) =>
                     setForm((f) => ({
                       ...f,
-                      targetDays: Math.min(60, Math.max(1, Number(e.target.value) || 1)),
+                      targetDays: Math.min(
+                        60,
+                        Math.max(1, Number(e.target.value) || 1),
+                      ),
                     }))
                   }
                   className="w-24 bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
                 />
-                <span className="text-sm font-semibold text-slate-500">jours</span>
+                <span className="text-sm font-semibold text-slate-500">
+                  jours
+                </span>
               </div>
             </div>
 
@@ -500,7 +548,9 @@ export default function TripHeroBanner() {
                 rows={2}
                 maxLength={2000}
                 value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, description: e.target.value }))
+                }
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-hidden resize-none"
               />
             </div>
