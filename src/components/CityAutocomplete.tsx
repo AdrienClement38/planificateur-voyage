@@ -206,9 +206,11 @@ export default function CityAutocomplete({
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-slate-800 truncate">
                   {city.name}
-                  {city.country && (
+                  {/* Reste du label (département + pays) en gris — montre directement
+                      « Viviers, Ardèche, France » pour distinguer les communes homonymes. */}
+                  {city.label.length > city.name.length && (
                     <span className="text-slate-400 font-normal">
-                      , {city.country}
+                      {city.label.slice(city.name.length)}
                     </span>
                   )}
                 </span>
