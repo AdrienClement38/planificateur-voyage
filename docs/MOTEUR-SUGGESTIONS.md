@@ -46,7 +46,10 @@ inventée** (jamais de note/prix/avis bidon — règle absolue).
 ## Filtres & purges (ce qui ne doit JAMAIS sortir en liste, et ce qui reste)
 
 Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots de
-100 en parallèle** (fiabilité). Puis purge secondaire :
+100 en parallèle** (fiabilité). ⚠ L'allow-list inclut **`musée` (Q33506)** : beaucoup
+de musées sont typés « institution » SANS type bâtiment → sans ça, ils échouaient le
+filtre et n'arrivaient que via Wikivoyage (sans vues, donc relégués SOUS des stades
+locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge secondaire :
 
 | Exclu | Comment | Gardé (important !) |
 |---|---|---|
@@ -58,7 +61,8 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
 | Œuvres **disparues/détruites** (Athéna Parthénos, Promachos, Lemnia) | **« œuvre d'art perdue » Q4140840** (P31/P279*) en purge — l'original n'existe plus, mais reste géotaggé sur l'Acropole et bien classé (sitelinks ≥17) | Statues **extérieures existantes** (Liberté, Manneken-Pis) ; **sites archéologiques** (Agora, Aréopage) — aucun n'est une « œuvre perdue » |
 | Événements (conclave, Journée des Tuiles) | bad-types + NOISE_BLOCK | — |
 | Bateaux-objets (Fram) | exclus du filtre lieu | Bateaux-LIEUX (HMS Belfast) — *à ajouter, cf. Reste à faire* |
-| Gares-transit UTILITAIRES (Saint-Charles, aéroports, Penn Station) — **RÉTROGRADÉES, pas supprimées** | transport P31/P279* (gare Q55488, métro Q928830, gare routière Q494829, aéroport Q1248784) SANS le tag **« site touristique » Q570116 en P31 DIRECT** → drapeau `demote` → tout en bas du tri (`wikidataDemoteTransit`). Règle GÉNÉRALE & MONDIALE, langue-agnostique | **Gares-MONUMENTS** marquées site touristique (Grand Central) ; **TOUS les STADES** (Vélodrome, Camp Nou, Wembley, panathénaïque — icônes, gardés à leur rang réel) |
+| Gares-transit UTILITAIRES (Saint-Charles, aéroports, Penn Station) — **RÉTROGRADÉES, pas supprimées** | transport P31/P279* (gare Q55488, métro Q928830, gare routière Q494829, aéroport Q1248784) SANS le tag **« site touristique » Q570116 en P31 DIRECT** → drapeau `demote` → tout en bas du tri (`wikidataClassifyDemote`). Règle GÉNÉRALE & MONDIALE, langue-agnostique | **Gares-MONUMENTS** marquées site touristique (Grand Central) |
+| Stades LOCAUX « au pif » (Ullevaal, Karaïskákis, Emirates, stade des Cort…) — **RÉTROGRADÉS** | enceinte sportive P31/P279* (stade Q483110 / sports venue Q1076486 / arène Q641226) NON « site touristique » **ET vues FR < 150k** (`STADIUM_VIEWS_MIN`, en aval du sondage des vues). Gouffre net dans les données : mondiaux > 300k, locaux < 51k | **Stades MONDIAUX** (Camp Nou 513k, Vélodrome 520k, Stade de France 761k, Wembley 339k, Parc des Princes, Lluís-Companys 307k) ; **panathénaïque** (antique, via tag « site touristique ») |
 
 ## « Œuvres à voir » (volet sur les cartes)
 
@@ -110,8 +114,10 @@ Filtre « lieu » (allow-list de super-types via P31/P279*) **découpé en lots 
 
 ## Limites connues (à traiter)
 
-1. ~~Oslo sous-classé~~ **RÉSOLU** (commit `97a8a36`) : tri sur **vues FR pures**
-   → opéra/Munch/palais remontent, Ullevaal tombe #2 → #6. Voir « Tri ».
+1. ~~Oslo sous-classé~~ **RÉSOLU** : (a) tri sur **vues FR pures** (`97a8a36`) →
+   opéra/Munch/palais remontent ; (b) **musées réintégrés** (Q33506 dans l'allow-list)
+   + **stades locaux rétrogradés** (`27467f2`) → Ullevaal/Bislett/Holmenkollbakken
+   partent, musées du Fram/navires vikings remontent. Voir « Tri » & « Filtres ».
    - **Arbitrage produit (PAS un bug) — stades célèbres** : le **stade de Wembley**
      ressort #3 à Londres, au-dessus du British Museum. Vérifié : **339 499 vues FR
      sur 3 ans** (vs 178 437 pour le British Museum) — les Français consultent
@@ -214,5 +220,7 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - `81f690f` doc : Oslo résolu + arbitrages (Wembley, Athéna Parthénos)
 - `8b89329` fiabilité vues + tri 2 paliers (anti-cratering, ordre stable)
 - `f454888` doc : robustesse 2 paliers + Wembley clarifié (pas un bug)
-- *(ce commit)* purge « œuvre perdue » Q4140840 (Athéna Parthénos) + gares-transit
-  rétrogradées (Saint-Charles↓, Grand Central gardé) — stades tous conservés
+- `f94e2ab` purge « œuvre perdue » Q4140840 (Athéna Parthénos) + gares-transit
+  rétrogradées (Saint-Charles↓, Grand Central gardé)
+- `27467f2` musées réintégrés (Q33506 dans l'allow-list) + stades locaux « au pif »
+  rétrogradés si vues FR < 150k (Ullevaal/Karaïskákis/Emirates↓, Camp Nou/Vélodrome gardés)
