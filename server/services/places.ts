@@ -786,6 +786,15 @@ async function wikidataPurge(qids: string[]): Promise<Set<string>> {
 const STADIUM_VIEWS_MIN = 100_000;
 
 /**
+ * Nombre de SOMMETS gardés par ville (les plus consultés) ; au-delà, rétrogradés.
+ * Une ville de montagne (Chamonix) est sinon noyée sous 30+ pics notables pour les
+ * alpinistes mais pas touristiques (Les Drus, dent du Géant, pointe Baretti…), qui
+ * enterrent les VRAIES activités (Mer de Glace, train du Montenvers). On garde les
+ * 5 plus connus (Mont Blanc, aiguille du Midi, Grandes Jorasses…).
+ */
+const SUMMIT_KEEP = 5;
+
+/**
  * Classe les lieux À RÉTROGRADER (palier du bas, JAMAIS supprimés) par une règle
  * GÉNÉRALE et MONDIALE (zéro exception nominative), langue-agnostique :
  *  - `transit` : transport UTILITAIRE (gare/métro/gare routière/aéroport) non
@@ -799,10 +808,16 @@ const STADIUM_VIEWS_MIN = 100_000;
  * relie à tort certaines gares à « site touristique » (ex. « gare en cul-de-sac »).
  * Fail-safe : en cas d'échec réseau, ensembles vides → on ne rétrograde rien.
  */
-async function wikidataClassifyDemote(
-  qids: string[],
-): Promise<{ transit: Set<string>; sports: Set<string> }> {
-  const out = { transit: new Set<string>(), sports: new Set<string>() };
+async function wikidataClassifyDemote(qids: string[]): Promise<{
+  transit: Set<string>;
+  sports: Set<string>;
+  summits: Set<string>;
+}> {
+  const out = {
+    transit: new Set<string>(),
+    sports: new Set<string>(),
+    summits: new Set<string>(),
+  };
   if (qids.length === 0) return out;
   const values = qids.map((q) => `wd:${q}`).join(" ");
   const sparql =
@@ -811,7 +826,13 @@ async function wikidataClassifyDemote(
     `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } BIND("t" AS ?kind) ` +
     `} UNION { ` +
     `?item wdt:P31/wdt:P279* ?sv. VALUES ?sv { wd:Q483110 wd:Q1076486 wd:Q641226 } ` +
-    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } BIND("s" AS ?kind) } }`;
+    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } BIND("s" AS ?kind) ` +
+    `} UNION { ` +
+    // SOMMETS (montagne Q8502 / sommet Q207326) : une ville de montagne (Chamonix)
+    // est noyée sous des dizaines de pics notables pour les alpinistes mais sans
+    // intérêt touristique. On ne garde que les plus connus (cf. SUMMIT_KEEP). Les
+    // GLACIERS (Mer de Glace, Q35666) ne sont PAS des sommets → jamais touchés.
+    `?item wdt:P31/wdt:P279* ?mt. VALUES ?mt { wd:Q8502 wd:Q207326 } BIND("m" AS ?kind) } }`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
   let data = (await fetchJson(url, 9000)) as {
     results?: {
@@ -831,6 +852,7 @@ async function wikidataClassifyDemote(
     if (!qid) continue;
     if (b.kind?.value === "t") out.transit.add(qid);
     else if (b.kind?.value === "s") out.sports.add(qid);
+    else if (b.kind?.value === "m") out.summits.add(qid);
   }
   return out;
 }
@@ -1135,6 +1157,17 @@ async function discoverWikidata(
     const keep = i === topI && (out[i].views ?? 0) >= STADIUM_VIEWS_MIN;
     if (!keep) out[i].demote = true;
   }
+  // SOMMETS : on garde les SUMMIT_KEEP plus consultés de la ville (Mont Blanc,
+  // aiguille du Midi…), on relègue le reste (Les Drus, pointe Baretti…) → les
+  // activités (Mer de Glace, train du Montenvers) cessent d'être noyées. Les
+  // GLACIERS ne sont pas des sommets → jamais dans demote.summits → intacts.
+  const summitIdx = outIds
+    .map((id, i) => i)
+    .filter((i) => demote.summits.has(outIds[i]))
+    .sort((a, b) => (out[b].views ?? 0) - (out[a].views ?? 0));
+  summitIdx.slice(SUMMIT_KEEP).forEach((i) => {
+    out[i].demote = true;
+  });
   // Tri local par vues/fame. NB : l'ordre DÉFINITIF est posé au tri final de
   // doFetchPlaceActivities (qui fusionne toutes les sources et fait le palier
   // « vues d'abord »). Ce tri-ci ne sert qu'à un éventuel usage direct.

@@ -66,6 +66,14 @@ const CASES: Case[] = [
     contain: ["Eiffel", "Louvre", "Notre-Dame"],
     notContain: ["Parc des Princes"],
   },
+  {
+    city: "Chamonix, France",
+    // Ville de montagne : les ICÔNES + les ACTIVITÉS doivent figurer, PAS la
+    // ribambelle de pics mineurs (plafonnés à SUMMIT_KEEP). « pointe X » = pics
+    // secondaires rétrogradés (pointe Baretti/Louis-Amédée… étaient #30+).
+    contain: ["mont Blanc", "aiguille du Midi", "Mer de Glace", "Montenvers"],
+    notContain: ["pointe"],
+  },
 ];
 
 describe.skipIf(!process.env.RUN_BENCH)(
@@ -75,6 +83,10 @@ describe.skipIf(!process.env.RUN_BENCH)(
       it(
         c.city,
         async () => {
+          // Espace les villes : 8 fetchs d'affilée saturent l'API des vues
+          // (throttle) → une icône peut faux-échouer. Une pause laisse l'API
+          // respirer (le banc est manuel, la lenteur n'est pas un souci).
+          await new Promise((r) => setTimeout(r, 4000));
           const list = await fetchPlaceActivities(c.city);
           expect(
             list.length,
