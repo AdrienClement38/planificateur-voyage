@@ -510,6 +510,11 @@ const WD_PLACE_TYPES = [
   "wd:Q123705",
   "wd:Q3257686", // quartier, localité
   "wd:Q39614", // cimetière
+  // Musée (Q33506) : BEAUCOUP de musées sont typés « institution » SANS type
+  // bâtiment → ils échouaient le filtre et n'arrivaient que via Wikivoyage (sans
+  // vues, donc relégués sous des stades locaux). Ex. à Oslo : musée du Fram,
+  // Kon-Tiki, navires vikings, Folkemuseum. Un musée est TOUJOURS visitable.
+  "wd:Q33506", // musée
 ];
 
 type WdItemResp = {
@@ -624,25 +629,63 @@ async function wikidataPurge(qids: string[]): Promise<Set<string>> {
 }
 
 /**
- * Gares / métros / gares routières / aéroports UTILITAIRES (transit pur) : énormément
- * de vues via voyageurs & pendulaires, mais on n'y va PAS en touriste. On les RÉTROGRADE
- * tout en bas du classement (≠ suppression : jamais de perte sèche) — SAUF les gares-
- * MONUMENTS, gardées par une règle GÉNÉRALE et MONDIALE (zéro exception nominative) :
- * est épargné tout transport explicitement marqué « site touristique » en P31 DIRECT
- * (Q570116), comme Grand Central. Signal langue-agnostique → marche partout (≠ le
- * patrimoine, propre à chaque pays). Renvoie les Q-ids à rétrograder ; fail-safe (set
- * vide si échec → on ne rétrograde rien). NB : on teste le tourisme en P31 DIRECT (pas
- * via P279*) car la hiérarchie des sous-classes relie à tort certaines gares à
- * « site touristique » (ex. « gare en cul-de-sac »).
+ * Vues FR minimales pour qu'une enceinte SPORTIVE (stade/arène) reste en haut du
+ * classement : en dessous, c'est un stade LOCAL « au pif » (pas une destination
+ * touristique) → rétrogradé. Calibré sur un GOUFFRE observé dans les données :
+ * stades mondiaux > 300k vues FR/3 ans (Camp Nou 513k, Vélodrome 520k, Stade de
+ * France 761k, Wembley 339k) ; stades locaux < 51k (RCDE 51k, Karaïskákis 34k,
+ * Ullevaal 15k, Bislett 4k). 150k tombe pile au milieu du vide → robuste.
  */
-async function wikidataDemoteTransit(qids: string[]): Promise<Set<string>> {
-  if (qids.length === 0) return new Set();
+const STADIUM_VIEWS_MIN = 150_000;
+
+/**
+ * Classe les lieux À RÉTROGRADER (palier du bas, JAMAIS supprimés) par une règle
+ * GÉNÉRALE et MONDIALE (zéro exception nominative), langue-agnostique :
+ *  - `transit` : transport UTILITAIRE (gare/métro/gare routière/aéroport) non
+ *    touristique — toujours rétrogradé. Épargné si marqué « site touristique »
+ *    (Q570116) en P31 DIRECT (gare-monument type Grand Central).
+ *  - `sports` : enceinte SPORTIVE (stade/arène) non touristique — rétrogradée
+ *    SEULEMENT si peu de vues (< STADIUM_VIEWS_MIN, testé en aval), pour virer les
+ *    stades locaux « au pif » tout en GARDANT les mondiaux (Camp Nou…). Épargnée
+ *    si « site touristique » (stade panathénaïque antique).
+ * On teste le tourisme en P31 DIRECT (pas P279*) : la hiérarchie des sous-classes
+ * relie à tort certaines gares à « site touristique » (ex. « gare en cul-de-sac »).
+ * Fail-safe : en cas d'échec réseau, ensembles vides → on ne rétrograde rien.
+ */
+async function wikidataClassifyDemote(
+  qids: string[],
+): Promise<{ transit: Set<string>; sports: Set<string> }> {
+  const out = { transit: new Set<string>(), sports: new Set<string>() };
+  if (qids.length === 0) return out;
   const values = qids.map((q) => `wd:${q}`).join(" ");
   const sparql =
-    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
+    `SELECT DISTINCT ?item ?kind WHERE { VALUES ?item { ${values} } { ` +
     `?item wdt:P31/wdt:P279* ?tt. VALUES ?tt { wd:Q55488 wd:Q928830 wd:Q494829 wd:Q1248784 } ` +
-    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } }`;
-  return (await sparqlItemSet(sparql, 9000)) ?? new Set();
+    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } BIND("t" AS ?kind) ` +
+    `} UNION { ` +
+    `?item wdt:P31/wdt:P279* ?sv. VALUES ?sv { wd:Q483110 wd:Q1076486 wd:Q641226 } ` +
+    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } BIND("s" AS ?kind) } }`;
+  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+  let data = (await fetchJson(url, 9000)) as {
+    results?: {
+      bindings?: Array<{
+        item?: { value?: string };
+        kind?: { value?: string };
+      }>;
+    };
+  } | null;
+  if (!data) {
+    await new Promise((r) => setTimeout(r, 300));
+    data = (await fetchJson(url, 9000)) as typeof data;
+  }
+  if (!data) return out; // fail-safe : on ne rétrograde rien
+  for (const b of data.results?.bindings ?? []) {
+    const qid = b.item?.value?.split("/").pop();
+    if (!qid) continue;
+    if (b.kind?.value === "t") out.transit.add(qid);
+    else if (b.kind?.value === "s") out.sports.add(qid);
+  }
+  return out;
 }
 
 interface WdAgg {
@@ -878,13 +921,15 @@ async function discoverWikidata(
   const survivors = placeIds
     ? candidates.filter(([id]) => placeIds.has(id))
     : candidates;
-  // PURGE secondaire (rivières/chaînes/communes séparées) + repérage des gares-transit
-  // utilitaires À RÉTROGRADER — les DEUX en parallèle sur ce petit lot (~50), chacune
-  // fail-safe (échec → on ne touche à rien, les vues classent). Le transit n'est PAS
-  // supprimé (jamais de perte d'une gare-monument) mais relégué tout en bas (cf. tri).
-  const [drop, demoteIds] = await Promise.all([
+  // PURGE secondaire (rivières/chaînes/communes séparées) + classement des lieux À
+  // RÉTROGRADER (gares-transit + enceintes sportives) — les DEUX en parallèle sur ce
+  // petit lot (~50), chacune fail-safe (échec → on ne touche à rien, les vues classent).
+  // Rien n'est SUPPRIMÉ (jamais de perte d'une gare-monument ou d'un stade) : juste
+  // relégué tout en bas (cf. tri). Les stades ne sont rétrogradés qu'en aval, si leurs
+  // vues sont sous le seuil « mondial » (cf. STADIUM_VIEWS_MIN).
+  const [drop, demote] = await Promise.all([
     wikidataPurge(survivors.map(([id]) => id)),
-    wikidataDemoteTransit(survivors.map(([id]) => id)),
+    wikidataClassifyDemote(survivors.map(([id]) => id)),
   ]);
 
   const out: PlaceActivity[] = [];
@@ -904,7 +949,7 @@ async function discoverWikidata(
       imageUrl: a.image
         ? a.image.replace(/^http:/, "https:") + "?width=800"
         : undefined,
-      demote: demoteIds.has(id) || undefined,
+      demote: demote.transit.has(id) || undefined, // transit : rétrogradé d'office
     });
     outIds.push(id);
     if (out.length >= 55) break;
@@ -923,6 +968,12 @@ async function discoverWikidata(
     if (views && views > 0) {
       p.fame = views; // pour l'admissibilité (≥8) et l'affichage
       p.views = views; // signal de 1er rang, distinct de fame (cf. tri final)
+    }
+    // Enceinte SPORTIVE non touristique ET peu consultée = stade LOCAL « au pif »
+    // (pas une destination) → rétrogradée. Les stades MONDIAUX (Camp Nou, Vélodrome,
+    // Wembley… > seuil) restent ; le panathénaïque est épargné via « site touristique ».
+    if (demote.sports.has(outIds[i]) && (p.views ?? 0) < STADIUM_VIEWS_MIN) {
+      p.demote = true;
     }
   });
   // Tri local par vues/fame. NB : l'ordre DÉFINITIF est posé au tri final de
