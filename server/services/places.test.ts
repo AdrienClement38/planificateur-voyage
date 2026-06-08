@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { photonToCitySuggestions } from "./places";
+import { photonToCitySuggestions } from "./geo";
 
 /**
  * Tests de la transformation PURE de la réponse Photon → suggestions de villes.
