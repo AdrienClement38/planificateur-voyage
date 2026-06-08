@@ -18,26 +18,10 @@ import { fetchJson, UA } from "./http";
 import { geocode } from "./geo";
 import { mapsLink, type Cat, type PlaceActivity } from "./core";
 import { discoverFoursquare } from "./foursquare";
+import { fetchExtracts } from "./enrich";
+import { classifyTitle } from "./classify";
 
 export type { PlaceActivity };
-
-/** Récupère les intros Wikipédia (fr) pour une liste de titres, en un appel. */
-async function fetchExtracts(
-  titles: string[],
-): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  if (titles.length === 0) return out;
-  const url = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&exsentences=2&redirects=1&titles=${encodeURIComponent(
-    titles.join("|"),
-  )}&format=json`;
-  const data = (await fetchJson(url)) as {
-    query?: { pages?: Record<string, { title?: string; extract?: string }> };
-  } | null;
-  for (const p of Object.values(data?.query?.pages ?? {})) {
-    if (p.title && p.extract) out[p.title] = p.extract;
-  }
-  return out;
-}
 
 // --------------------------------------------------------------- Source 1 : Overpass
 
@@ -246,39 +230,6 @@ async function discoverOverpass(
 // Titres à écarter : voies, transports, administratif, événements, bâtiments…
 const WIKI_BLOCK =
   /unit[ée] urbaine|communaut[ée]|\bcanton\b|arrondissement|jeux olympiques|festival|cosmo|cimeti[èe]re|tunnel|quartier|vall[ée]e de|gare des|gare de [a-zà-ÿ' -]+-mont-blanc$|presbyt[èe]re|liste de|^avenue |^rue | rue |^boulevard |^cours [a-zà-ÿ]|tramway|\btram\b|m[ée]tro\b|m[ée]tropole|^pays |\bsi[èe]ge de\b|bataille de|trait[ée] de|congr[èe]s|incendie|attentat|bombardement|occupation|annexion|lib[ée]ration de|^immeuble |^maison (?!de la culture)|^h[ôo]tel (?!de ville|dieu|de r[ée]gion)|^ligne |a[ée]roport|h[ôo]pital|lyc[ée]e|coll[èe]ge|universit[ée]/i;
-
-function classifyTitle(title: string): { category: Cat; duration: string } {
-  const t = title.toLowerCase();
-  if (/spa|thermes|thermal|\bbains\b|bien-[êe]tre|wellness|sauna/.test(t))
-    return { category: "Bien-être", duration: "demi-journée" };
-  if (
-    /t[ée]l[ée](ph[ée]|f[ée])rique|t[ée]l[ée]cabine|funiculaire|cr[ée]maill[èe]re|montenvers|\bgare de\b|petit train|train du|luge|patinoire|parc aquatique|aquarium|\bzoo\b/.test(
-      t,
-    )
-  )
-    return { category: "Loisir", duration: "demi-journée" };
-  if (/mus[ée]e|galerie|fondation|th[ée][âa]tre|op[ée]ra/.test(t))
-    return { category: "Culture", duration: "1h30" };
-  if (
-    /[ée]glise|temple|cath[ée]drale|basilique|chapelle|abbaye|monast[èe]re/.test(
-      t,
-    )
-  )
-    return { category: "Culture", duration: "1h" };
-  if (
-    /mont|aiguille|\bpic\b|\blac\b|glacier|parc|jardin|cascade|gorges|plage|colline|sommet|\bcol\b|grotte|r[ée]serve|presqu/.test(
-      t,
-    )
-  )
-    return { category: "Nature", duration: "demi-journée" };
-  if (
-    /place|fontaine|\bpont\b|palais|ch[âa]teau|\btour\b|porte|\barc\b|forum|amphith[ée][âa]tre|colis[ée]e|ar[èe]nes|halle|hôtel de ville/.test(
-      t,
-    )
-  )
-    return { category: "Culture", duration: "1h" };
-  return { category: "Visite", duration: "1h30" };
-}
 
 async function discoverWikipedia(
   lat: number,
