@@ -1753,12 +1753,32 @@ async function doFetchPlaceActivities(
 
     // Fusion + dédoublonnage (nom normalisé). On rassemble large, on curera après.
     const seen = new Set<string>();
+    const seenKeys: string[] = [];
     const merged: PlaceActivity[] = [];
     for (const p of [...wd, ...fs, ...wv, ...ov, ...wikipediaFallback]) {
       if (!p.name || NOISE_BLOCK.test(p.name)) continue;
       const k = dedupKey(p.name, destination);
       if (!k || seen.has(k)) continue;
+      // Dédup FLOUE — deux entités du MÊME lieu aux noms quasi identiques où l'un n'est
+      // que l'autre + un QUALIFICATIF de région/appartenance (ex. Grenoble : « Musée de
+      // la Résistance et de la déportation » vs « … de l'Isère »). PRUDENCE EXTRÊME pour
+      // ne JAMAIS fusionner des lieux distincts (« basilique Saint-Pierre » vs « … -aux-
+      // Liens », deux églises de Rome) : on exige (1) un préfixe commun LONG (≥ 30 car.,
+      // sur frontière de mot) ET (2) que le suffixe ajouté soit COURT (≤ 14) et commence
+      // par « de/du/des… » — un vrai qualificatif, pas un mot distinctif (« aux Liens »,
+      // « Moderne », « et contemporain » ne commencent pas par « de » → jamais fusionnés).
+      const nearDup = seenKeys.some((s) => {
+        const a = k.length <= s.length ? k : s; // le plus court
+        const b = k.length <= s.length ? s : k; // le plus long
+        if (a.length < 30 || !b.startsWith(a + " ")) return false;
+        const suffix = b.slice(a.length + 1);
+        return (
+          suffix.length <= 14 && /^(de|du|des|de la|de l)\s/.test(suffix + " ")
+        );
+      });
+      if (nearDup) continue;
       seen.add(k);
+      seenKeys.push(k);
       merged.push(p);
       if (merged.length >= 70) break;
     }
