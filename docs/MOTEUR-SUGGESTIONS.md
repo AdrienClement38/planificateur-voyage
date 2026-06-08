@@ -197,8 +197,11 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
    Q4140840 (cf. Limite 2 & « Filtres & purges »).
 3. **Persister le cache des vues** en base (fix AlwaysData, cf. Limite 3).
 4. **HMS Belfast** : type « navire-musée » = lieu visitable (à ajouter au filtre).
-5. **Dédoublonnage par adresse/coordonnées** (Grenoble : musée de la Résistance vs
-   musée des Chasseurs alpins — distincts ? vérifier par l'adresse).
+5. ~~Dédoublonnage~~ **PARTIEL** : dédup FLOUE des doublons « nom + qualificatif de
+   région » (Grenoble : musée de la Résistance « … » vs « … de l'Isère ») —
+   préfixe ≥ 30 car. + suffixe court « de/du/des… » (jamais de fusion à tort, ex.
+   Saint-Pierre vs Saint-Pierre-aux-Liens préservés). Reste : dédup par
+   COORDONNÉES pour les doublons à noms vraiment différents (chantier à part).
 6. ~~Coder le **banc** en test Vitest~~ **FAIT** (`places.bench.test.ts`, `RUN_BENCH=1`).
 7. **Gares-monuments SANS le tag « site touristique »** (ex. St-Pancras Grade I,
    Gare de Lyon) : actuellement RÉTROGRADÉES à tort (soft, jamais supprimées). Les
@@ -232,4 +235,6 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - `27467f2` musées réintégrés (Q33506 dans l'allow-list) + 1ère version du filtre stades
 - `74fee8d` stades : on ne garde que LE plus consulté de la ville (Camp Nou seul à
   Barcelone, Wembley seul à Londres…) — règle « top ville + plancher », pas un seuil
-- *(banc)* `places.bench.test.ts` : armure anti-régression (7 villes, `RUN_BENCH=1`)
+- *(banc)* `places.bench.test.ts` : armure anti-régression (8 villes, `RUN_BENCH=1`)
+- `91d1f30` plafond des sommets (Chamonix : le train du Montenvers remonte #35→#10)
+- `c339730` dédup floue « nom + qualificatif de région » (doublon musée Grenoble)
