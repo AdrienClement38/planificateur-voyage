@@ -23,20 +23,40 @@ export interface TripSocketHandlers {
  * Chaque modification (par n'importe quel membre) arrive en direct → pas de
  * polling, pas de rechargement. Renvoie une fonction pour fermer la connexion.
  */
-export function connectTripSocket(tripId: string, handlers: TripSocketHandlers): () => void {
+export function connectTripSocket(
+  tripId: string,
+  handlers: TripSocketHandlers,
+): () => void {
   let ws: WebSocket | null = null;
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | null = null;
+  let attempt = 0; // compteur pour le back-off
+
+  // Reconnexion avec BACK-OFF exponentiel plafonné (1s, 2s, 4s… max 30s) : quand le
+  // serveur est down (redémarrage, coupure réseau), on ne le martèle PAS toutes les
+  // 2s (spam console + charge) ; au retour, la reconnexion reste rapide.
+  const scheduleRetry = () => {
+    if (closed || retry) return;
+    const delay = Math.min(30_000, 1000 * 2 ** attempt);
+    attempt += 1;
+    retry = setTimeout(() => {
+      retry = null;
+      open();
+    }, delay);
+  };
 
   const open = () => {
     if (closed) return;
     try {
       ws = new WebSocket(wsUrl());
     } catch {
-      retry = setTimeout(open, 3000);
+      scheduleRetry();
       return;
     }
-    ws.onopen = () => ws?.send(JSON.stringify({ type: "subscribe", tripId }));
+    ws.onopen = () => {
+      attempt = 0; // connexion établie → on repart à zéro pour le prochain incident
+      ws?.send(JSON.stringify({ type: "subscribe", tripId }));
+    };
     ws.onmessage = (e) => {
       let msg: { type?: string; trip?: Trip; tripId?: string };
       try {
@@ -45,10 +65,11 @@ export function connectTripSocket(tripId: string, handlers: TripSocketHandlers):
         return;
       }
       if (msg.type === "trip:updated" && msg.trip) handlers.onTrip(msg.trip);
-      else if (msg.type === "trip:deleted" && msg.tripId) handlers.onDeleted(msg.tripId);
+      else if (msg.type === "trip:deleted" && msg.tripId)
+        handlers.onDeleted(msg.tripId);
     };
     ws.onclose = () => {
-      if (!closed) retry = setTimeout(open, 2000); // reconnexion
+      if (!closed) scheduleRetry();
     };
     ws.onerror = () => ws?.close();
   };

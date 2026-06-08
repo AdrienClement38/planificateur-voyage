@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { TripContext, useTripStore } from "./store/TripContext";
 import { useTripController } from "./store/useTripController";
+import ErrorBoundary from "./components/ErrorBoundary";
 import AppHeader from "./components/AppHeader";
 import TripHeroBanner from "./features/TripHeroBanner";
 import TripWorkspace from "./features/TripWorkspace";
@@ -14,14 +15,22 @@ export default function App() {
   const store = useTripController();
   return (
     <TripContext.Provider value={store}>
-      <AppShell />
+      <ErrorBoundary>
+        <AppShell />
+      </ErrorBoundary>
     </TripContext.Provider>
   );
 }
 
 function AppShell() {
-  const { authStatus, activePage, activeTrip, isLoadingTrip, mutationError, setActivePage } =
-    useTripStore();
+  const {
+    authStatus,
+    activePage,
+    activeTrip,
+    isLoadingTrip,
+    mutationError,
+    setActivePage,
+  } = useTripStore();
 
   if (authStatus === "loading") {
     return (
@@ -46,22 +55,29 @@ function AppShell() {
           </div>
         )}
 
-        {activePage === "dashboard" &&
-          (activeTrip ? (
-            <div className="space-y-4">
-              <TripHeroBanner />
-              <TripWorkspace />
-            </div>
-          ) : (
-            <EmptyTripsState onCreate={() => setActivePage("create-trip")} loading={isLoadingTrip} />
-          ))}
+        {/* Boundary FINE autour du contenu : si une page plante, l'en-tête (donc la
+            navigation, le changement de voyage, la déconnexion) reste utilisable. */}
+        <ErrorBoundary scope="cette page">
+          {activePage === "dashboard" &&
+            (activeTrip ? (
+              <div className="space-y-4">
+                <TripHeroBanner />
+                <TripWorkspace />
+              </div>
+            ) : (
+              <EmptyTripsState
+                onCreate={() => setActivePage("create-trip")}
+                loading={isLoadingTrip}
+              />
+            ))}
 
-        {(activePage === "create-trip" || activePage === "account") && (
-          <Suspense fallback={<LoadingFallback />}>
-            {activePage === "create-trip" && <CreateTripPage />}
-            {activePage === "account" && <AccountPage />}
-          </Suspense>
-        )}
+          {(activePage === "create-trip" || activePage === "account") && (
+            <Suspense fallback={<LoadingFallback />}>
+              {activePage === "create-trip" && <CreateTripPage />}
+              {activePage === "account" && <AccountPage />}
+            </Suspense>
+          )}
+        </ErrorBoundary>
 
         <footer className="pt-4 pb-12 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-3 border-t border-slate-200">
           <p className="font-medium text-slate-500">
@@ -81,15 +97,19 @@ function EmptyTripsState({
   onCreate: () => void;
   loading: boolean;
 }) {
-  const { joinTripIdInput, setJoinTripIdInput, handleJoinTrip } = useTripStore();
+  const { joinTripIdInput, setJoinTripIdInput, handleJoinTrip } =
+    useTripStore();
   if (loading) return <LoadingFallback label="Chargement de vos voyages…" />;
   return (
     <div className="bg-white rounded-3xl border border-slate-200 p-8 max-w-xl mx-auto text-center space-y-5 animate-fadeIn">
       <span className="text-4xl">🛶</span>
       <div className="space-y-1.5">
-        <h2 className="text-lg font-bold text-slate-900">Aucun voyage pour l'instant</h2>
+        <h2 className="text-lg font-bold text-slate-900">
+          Aucun voyage pour l'instant
+        </h2>
         <p className="text-xs text-slate-500">
-          Créez votre premier projet de voyage de groupe, ou rejoignez-en un via son code de partage.
+          Créez votre premier projet de voyage de groupe, ou rejoignez-en un via
+          son code de partage.
         </p>
       </div>
       <button
