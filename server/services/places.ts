@@ -127,17 +127,6 @@ export interface CitySuggestion {
   lon: number;
 }
 
-// Types OSM `place=*` retenus comme destinations de voyage valides : on garde
-// villes/communes/îles et on écarte le bruit (hameaux, quartiers, lieux-dits,
-// pays, régions) qui géocode mal ou n'a pas de sens comme destination précise.
-const CITY_PLACE_VALUES = new Set([
-  "city",
-  "town",
-  "village",
-  "municipality",
-  "island",
-]);
-
 interface PhotonFeature {
   properties?: {
     name?: string;
@@ -147,28 +136,54 @@ interface PhotonFeature {
     county?: string;
     osm_key?: string;
     osm_value?: string;
+    /** Calque normalisé par Photon : house|street|locality|district|city|county|state|country|other. */
+    type?: string;
   };
   geometry?: { coordinates?: [number, number] };
 }
 
+// Rang d'affichage par type de lieu OSM : une vraie VILLE passe devant un
+// village quasi-homonyme (ex. « Barce » → Barcelone (ville) avant Barceo
+// (village)). On NE rétrograde QUE les petits lieux : villes, communes ET
+// métropoles-province (Tokyo est tagué place=province mais normalisé type=city)
+// partagent le rang « lieu notable », pour rester en tête quand Photon les y a
+// déjà mises. Règle GÉNÉRALE et mondiale, zéro exception nominative.
+function placeRank(osmValue?: string): number {
+  if (osmValue === "city") return 0;
+  // Lieux mineurs explicitement rétrogradés (le reste = « notable », rang 1).
+  if (
+    osmValue === "village" ||
+    osmValue === "hamlet" ||
+    osmValue === "isolated_dwelling" ||
+    osmValue === "farm" ||
+    osmValue === "locality" ||
+    osmValue === "suburb" ||
+    osmValue === "neighbourhood" ||
+    osmValue === "quarter"
+  )
+    return 2;
+  return 1; // town, municipality, province, region… = lieu notable
+}
+
 /**
  * Transforme la réponse GeoJSON de Photon en suggestions de villes propres.
- * Fonction PURE (sans réseau) → testée unitairement. Ne garde que les `place=*`
- * pertinents (cf. CITY_PLACE_VALUES), construit un `label` « Ville, Pays », et
- * déduplique par label (Photon renvoie parfois le même lieu en double).
+ * Fonction PURE (sans réseau) → testée unitairement.
+ *  - Ne garde que les LIEUX HABITÉS via le calque normalisé `type === "city"`
+ *    (ville/commune/village/métropole) — ce qui écarte d'office gares, stades,
+ *    POI et même l'aéroport de Haneda (tagué `place=island` mais `type=house`).
+ *  - Construit un `label` « Ville, Pays » et déduplique par label.
+ *  - Re-classe par notoriété de type (ville > village) en tri STABLE : à rang
+ *    égal, on conserve l'ordre de pertinence de Photon.
  */
 export function photonToCitySuggestions(data: unknown): CitySuggestion[] {
   const features = (data as { features?: PhotonFeature[] } | null)?.features;
   if (!Array.isArray(features)) return [];
-  const out: CitySuggestion[] = [];
+  const ranked: { city: CitySuggestion; rank: number; idx: number }[] = [];
   const seen = new Set<string>();
   for (const f of features) {
     const p = f.properties ?? {};
     const name = p.name?.trim();
-    if (!name) continue;
-    // On ne propose QUE des lieux habités pertinents (pas de rue/POI/pays).
-    if (p.osm_key !== "place" || !CITY_PLACE_VALUES.has(p.osm_value ?? ""))
-      continue;
+    if (!name || p.type !== "city") continue;
     const lon = f.geometry?.coordinates?.[0];
     const lat = f.geometry?.coordinates?.[1];
     if (typeof lat !== "number" || typeof lon !== "number") continue;
@@ -177,17 +192,23 @@ export function photonToCitySuggestions(data: unknown): CitySuggestion[] {
     const key = label.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({
-      label,
-      name,
-      country,
-      countryCode: p.countrycode?.toUpperCase(),
-      region: [p.state, p.county].filter(Boolean).join(", ") || undefined,
-      lat,
-      lon,
+    ranked.push({
+      city: {
+        label,
+        name,
+        country,
+        countryCode: p.countrycode?.toUpperCase(),
+        region: [p.state, p.county].filter(Boolean).join(", ") || undefined,
+        lat,
+        lon,
+      },
+      rank: placeRank(p.osm_value),
+      idx: ranked.length, // ordre Photon, pour un tri stable explicite
     });
   }
-  return out;
+  return ranked
+    .sort((a, b) => a.rank - b.rank || a.idx - b.idx)
+    .map((r) => r.city);
 }
 
 // Cache mémoire court (10 min) des suggestions par requête : l'autocomplétion
@@ -212,12 +233,13 @@ export async function suggestCities(
   const cacheKey = `${cap}|${q.toLowerCase()}`;
   const hit = GEO_CACHE.get(cacheKey);
   if (hit && Date.now() - hit.at < GEO_TTL) return hit.items;
-  // On demande plus large que `cap` (le filtre « place » écarte ensuite
-  // rues/POI/régions), puis on tronque à `cap` après filtrage.
+  // `layer=city` = uniquement des lieux habités (Photon écarte rues, POI, gares,
+  // aéroports, frontières admin…) → la vraie ville n'est jamais noyée hors du
+  // top N. On sur-échantillonne (le filtre/dédup réduit ensuite), puis on tronque.
   const url =
     `https://photon.komoot.io/api?q=${encodeURIComponent(q)}` +
-    `&lang=fr&limit=${Math.min(cap * 3, 20)}`;
-  const data = await fetchJson(url, 4500);
+    `&lang=fr&layer=city&limit=${Math.min(cap * 3, 20)}`;
+  const data = await fetchJson(url, 6000);
   const items = photonToCitySuggestions(data).slice(0, cap);
   // On ne met en cache QUE les succès (≥1 résultat) : un échec réseau ne doit pas
   // se figer 10 min (auto-réparation à la frappe suivante).

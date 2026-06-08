@@ -1,4 +1,5 @@
 import { useTripStore, type BudgetType } from "../store/TripContext";
+import CityAutocomplete from "../components/CityAutocomplete";
 
 /** Page autonome de création d'un nouveau voyage de groupe. */
 export default function CreateTripPage() {
@@ -46,15 +47,15 @@ export default function CreateTripPage() {
         </div>
 
         <div className="space-y-1.5 font-sans">
-          <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+          <label htmlFor="trip-destination" className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
             Destination <span className="text-slate-300 normal-case font-semibold">(optionnel — sinon à décider via le vote)</span>
           </label>
-          <input
-            type="text"
-            placeholder="ex: Barcelone, Espagne 🇪🇸"
+          <CityAutocomplete
+            id="trip-destination"
             value={newTripDestination}
-            onChange={(e) => setNewTripDestination(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-hidden font-medium"
+            onChange={setNewTripDestination}
+            placeholder="Commencez à taper une ville (ex: Barce…)"
+            inputClassName="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-hidden font-medium"
           />
         </div>
 

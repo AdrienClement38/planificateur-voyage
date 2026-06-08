@@ -1,5 +1,6 @@
 import { MapPin, ThumbsUp, Trash2, ArrowRight } from "lucide-react";
 import { useTripStore } from "../store/TripContext";
+import CityAutocomplete from "../components/CityAutocomplete";
 
 /** Onglet de proposition et de vote des destinations. */
 export default function VotingTab() {
@@ -148,13 +149,13 @@ export default function VotingTab() {
 
       {/* Form to append destination */}
       <form onSubmit={handleAddDestination} className="pt-2 flex gap-2">
-        <input
-          type="text"
-          required
-          placeholder="Saisir une nouvelle suggestion de ville (ex : Chamonix, Florence...)"
+        <CityAutocomplete
           value={newDestName}
-          onChange={(e) => setNewDestName(e.target.value)}
-          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-medium"
+          onChange={setNewDestName}
+          required
+          placeholder="Saisir une ville réelle (ex : Chamonix, Florence...)"
+          className="flex-1"
+          inputClassName="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-medium"
         />
         <button
           type="submit"

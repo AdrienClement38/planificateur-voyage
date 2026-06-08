@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import compression from "compression";
+import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import authRouter from "./server/routes/auth";
 import tripsRouter from "./server/routes/trips";
@@ -12,7 +13,7 @@ import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
 import { createServer } from "node:http";
 import { initRealtime } from "./server/realtime";
-import { fetchPlaceActivities, discoverPlaceHighlightsBatch } from "./server/services/places";
+import { fetchPlaceActivities, discoverPlaceHighlightsBatch, suggestCities } from "./server/services/places";
 
 dotenv.config();
 
@@ -551,6 +552,31 @@ app.post("/api/place-highlights", async (req, res) => {
     return res.json({ highlights });
   } catch (err: any) {
     return res.status(500).json({ error: "Échec.", details: err?.message });
+  }
+});
+
+// Autocomplétion de villes pour la saisie de la DESTINATION (proxy Photon/OSM).
+// Public, lecture seule : sert le formulaire de création (avant même qu'un
+// voyage existe) ET la proposition de villes au vote. Aucune clé exposée, cache
+// côté serveur. Renvoie proprement [] si Photon est injoignable (repli : champ
+// libre). Limité par IP : l'autocomplétion tape vite, on protège Photon + le serveur.
+const geoLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 80,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { suggestions: [] },
+});
+
+app.get("/api/geo/suggest", geoLimiter, async (req, res) => {
+  const q = typeof req.query.q === "string" ? req.query.q : "";
+  if (q.trim().length < 2) return res.json({ suggestions: [] });
+  try {
+    const suggestions = await suggestCities(q);
+    return res.json({ suggestions });
+  } catch {
+    // Jamais d'erreur dure pour de l'autocomplétion : on dégrade en champ libre.
+    return res.json({ suggestions: [] });
   }
 });
 

@@ -69,6 +69,47 @@ export async function suggestActivities(
   return res.json();
 }
 
+/** Suggestion de ville pour l'autocomplétion de destination (API /api/geo/suggest). */
+export interface CitySuggestion {
+  /** Forme canonique « Ville, Pays » — valeur à stocker / géocoder. */
+  label: string;
+  /** Nom seul de la ville (FR si disponible). */
+  name: string;
+  /** Pays (FR), si connu. */
+  country?: string;
+  /** Code ISO 3166-1 alpha-2 (majuscules) → drapeau. */
+  countryCode?: string;
+  /** Région/département, pour désambiguïser visuellement. */
+  region?: string;
+  lat: number;
+  lon: number;
+}
+
+/**
+ * Autocomplétion de villes : interroge `/api/geo/suggest` (proxy Photon/OSM côté
+ * serveur). Tolérant à l'échec ET à l'annulation : renvoie `[]` plutôt que de
+ * lever — l'appelant débounce et annule la requête en vol via `signal` à chaque
+ * frappe, donc une `AbortError` est un cas normal, pas une erreur.
+ */
+export async function suggestCities(
+  query: string,
+  signal?: AbortSignal,
+): Promise<CitySuggestion[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  try {
+    const res = await fetch(
+      apiUrl(`/api/geo/suggest?q=${encodeURIComponent(q)}`),
+      { signal },
+    );
+    if (!res.ok) return [];
+    const body = (await res.json()) as { suggestions?: CitySuggestion[] };
+    return body.suggestions ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /** Une œuvre à voir dans un lieu (musée, chapelle…), renvoyée par l'API. */
 export interface PlaceHighlight {
   name: string;
