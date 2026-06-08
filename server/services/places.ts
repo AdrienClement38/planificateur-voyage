@@ -16,54 +16,9 @@
  */
 import { fetchJson, UA } from "./http";
 import { geocode } from "./geo";
+import { mapsLink, type Cat, type PlaceActivity } from "./core";
 
-type Cat =
-  | "Visite"
-  | "Gastronomie"
-  | "Culture"
-  | "Loisir"
-  | "Nature"
-  | "Shopping"
-  | "Bien-être";
-
-export interface PlaceActivity {
-  name: string;
-  description: string;
-  category: Cat;
-  duration: string;
-  /** Lien « Voir le lieu » : fiche Google Maps du lieu (uniforme, toutes sources). */
-  bookingUrl: string;
-  /** Source réelle : "OpenStreetMap" | "Wikivoyage" | "Wikipédia" | "Foursquare". */
-  provider: string;
-  /** Prix RÉEL en €, sinon undefined — jamais inventé. */
-  cost?: number;
-  /** Note RÉELLE, sinon undefined — jamais inventée. */
-  rating?: number;
-  reviewsCount?: number;
-  /** Photo RÉELLE, sinon undefined. */
-  imageUrl?: string;
-  /** Indice interne : titre d'article Wikipédia (FR) pour retrouver photo/intro. */
-  wikiTitle?: string;
-  /** Notoriété interne : nombre de versions linguistiques Wikipédia (classement). */
-  fame?: number;
-  /**
-   * Vraies vues Wikipédia (FR) si on a pu les récupérer, sinon undefined. C'est le
-   * signal de notoriété de PREMIER RANG. On le garde DISTINCT de `fame` pour ne
-   * jamais comparer une échelle « vues » (~10³-10⁵) à une échelle « liens » (~10²) :
-   * au tri final, les lieux AVEC vues passent tous devant (triés par vues), les
-   * autres suivent (triés par `fame`). Évite qu'un lieu majeur dont la récup de vues
-   * échoue (throttle) ne plonge sous un lieu mineur — classement stable & cohérent.
-   */
-  views?: number;
-  /**
-   * Lieu de transit UTILITAIRE (gare/métro/aéroport non touristique, ex. Marseille-
-   * Saint-Charles) : énormément consulté par les voyageurs mais sans intérêt touristique.
-   * On NE le supprime PAS (jamais de perte sèche d'une gare-monument) mais on le
-   * RÉTROGRADE tout en bas du classement (cf. tri final). Les gares-MONUMENTS marquées
-   * « site touristique » (Grand Central) ne portent PAS ce drapeau → restent en haut.
-   */
-  demote?: boolean;
-}
+export type { PlaceActivity };
 
 /** Récupère les intros Wikipédia (fr) pour une liste de titres, en un appel. */
 async function fetchExtracts(
@@ -132,11 +87,6 @@ function classifyTags(tags: Record<string, string>): {
     return { category: "Nature", duration: "1h30" };
   if (tour === "viewpoint") return { category: "Nature", duration: "1h" };
   return { category: "Visite", duration: "1h30" };
-}
-
-/** Lien « Voir le lieu » : TOUJOURS une fiche Google Maps (uniforme, toutes sources). */
-function mapsLink(name: string, dest: string): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name}, ${dest}`)}`;
 }
 
 // L'instance publique d'Overpass est souvent saturée (429) ou lente. On essaie
