@@ -158,7 +158,9 @@ export function useTripController() {
           setMutationError("Hors-ligne : données en cache affichées.");
         } else {
           setActiveTrip(null);
-          setMutationError(err instanceof ApiError ? err.message : "Chargement impossible.");
+          setMutationError(
+            err instanceof ApiError ? err.message : "Chargement impossible.",
+          );
         }
       } finally {
         setIsLoadingTrip(false);
@@ -178,7 +180,9 @@ export function useTripController() {
           cacheTrip(trip);
         }
       } catch (err) {
-        setMutationError(err instanceof ApiError ? err.message : "Action impossible.");
+        setMutationError(
+          err instanceof ApiError ? err.message : "Action impossible.",
+        );
       }
     },
     [],
@@ -224,7 +228,9 @@ export function useTripController() {
         await loadAfterAuth(user);
         setActivePage("dashboard");
       } catch (err) {
-        setAuthError(err instanceof ApiError ? err.message : "Inscription impossible.");
+        setAuthError(
+          err instanceof ApiError ? err.message : "Inscription impossible.",
+        );
       }
     },
     [loadAfterAuth],
@@ -238,7 +244,9 @@ export function useTripController() {
         await loadAfterAuth(user);
         setActivePage("dashboard");
       } catch (err) {
-        setAuthError(err instanceof ApiError ? err.message : "Connexion impossible.");
+        setAuthError(
+          err instanceof ApiError ? err.message : "Connexion impossible.",
+        );
       }
     },
     [loadAfterAuth],
@@ -262,7 +270,9 @@ export function useTripController() {
   const handleExportData = useCallback(async () => {
     try {
       const data = await authApi.exportData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -270,7 +280,9 @@ export function useTripController() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setMutationError(err instanceof ApiError ? err.message : "Export impossible.");
+      setMutationError(
+        err instanceof ApiError ? err.message : "Export impossible.",
+      );
     }
   }, []);
 
@@ -278,7 +290,9 @@ export function useTripController() {
     try {
       await authApi.deleteAccount();
     } catch (err) {
-      setMutationError(err instanceof ApiError ? err.message : "Suppression impossible.");
+      setMutationError(
+        err instanceof ApiError ? err.message : "Suppression impossible.",
+      );
       return;
     }
     socketCloser.current?.();
@@ -299,7 +313,9 @@ export function useTripController() {
         // rafraîchit le voyage actif pour refléter le nom/avatar immédiatement.
         if (selectedTripId) await openTrip(selectedTripId);
       } catch (err) {
-        setMutationError(err instanceof ApiError ? err.message : "Mise à jour impossible.");
+        setMutationError(
+          err instanceof ApiError ? err.message : "Mise à jour impossible.",
+        );
       }
     },
     [selectedTripId, openTrip],
@@ -335,10 +351,19 @@ export function useTripController() {
         setNewTripDestination("");
         setActivePage("dashboard");
       } catch (err) {
-        setMutationError(err instanceof ApiError ? err.message : "Création impossible.");
+        setMutationError(
+          err instanceof ApiError ? err.message : "Création impossible.",
+        );
       }
     },
-    [newTripName, newTripDestination, newTripDays, newTripBudget, refreshTripsList, subscribeToTrip],
+    [
+      newTripName,
+      newTripDestination,
+      newTripDays,
+      newTripBudget,
+      refreshTripsList,
+      subscribeToTrip,
+    ],
   );
 
   const handleDeleteTrip = useCallback(
@@ -352,7 +377,9 @@ export function useTripController() {
           setSelectedTripId(null);
         }
       } catch (err) {
-        setMutationError(err instanceof ApiError ? err.message : "Suppression impossible.");
+        setMutationError(
+          err instanceof ApiError ? err.message : "Suppression impossible.",
+        );
       }
     },
     [refreshTripsList, openTrip],
@@ -372,7 +399,9 @@ export function useTripController() {
         setJoinTripIdInput("");
         setActivePage("dashboard");
       } catch (err) {
-        setMutationError(err instanceof ApiError ? err.message : "Voyage introuvable.");
+        setMutationError(
+          err instanceof ApiError ? err.message : "Voyage introuvable.",
+        );
       }
     },
     [refreshTripsList, subscribeToTrip],
@@ -381,7 +410,9 @@ export function useTripController() {
   const handleUpdateTransportValue = useCallback(
     (value: number) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.patch(activeTrip.id, { externalTransportCost: value }));
+      void applyMutation(() =>
+        tripsApi.patch(activeTrip.id, { externalTransportCost: value }),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -389,7 +420,20 @@ export function useTripController() {
   const handlePatchTrip = useCallback(
     (fields: Record<string, unknown>) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.patch(activeTrip.id, fields));
+      // Changement RÉEL de destination → les suggestions de l'ancienne ville n'ont
+      // plus aucun sens (on resterait sur des lieux de Moselle pour un voyage en
+      // Ardèche). On les purge dans la foulée ; le programme DÉJÀ PLANIFIÉ, lui,
+      // reste intact (clearActivities ne touche pas l'itinéraire).
+      const nextDest = fields.selectedDestination;
+      const destChanged =
+        typeof nextDest === "string" &&
+        nextDest.trim() !== (activeTrip.selectedDestination ?? "").trim();
+      void applyMutation(async () => {
+        const patched = await tripsApi.patch(activeTrip.id, fields);
+        return destChanged
+          ? await tripsApi.clearActivities(activeTrip.id)
+          : patched;
+      });
     },
     [activeTrip, applyMutation],
   );
@@ -402,7 +446,9 @@ export function useTripController() {
       if (!activeTrip || !newDestName.trim()) return;
       const name = newDestName.trim();
       setNewDestName("");
-      void applyMutation(() => tripsApi.addDestination(activeTrip.id, { name }));
+      void applyMutation(() =>
+        tripsApi.addDestination(activeTrip.id, { name }),
+      );
     },
     [activeTrip, newDestName, applyMutation],
   );
@@ -419,7 +465,9 @@ export function useTripController() {
   const handleChooseDestination = useCallback(
     (name: string) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.patch(activeTrip.id, { selectedDestination: name }));
+      void applyMutation(() =>
+        tripsApi.patch(activeTrip.id, { selectedDestination: name }),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -427,7 +475,9 @@ export function useTripController() {
   const handleDeleteDestinationProposal = useCallback(
     (destId: string) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.deleteDestination(activeTrip.id, destId));
+      void applyMutation(() =>
+        tripsApi.deleteDestination(activeTrip.id, destId),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -435,7 +485,9 @@ export function useTripController() {
   const handleToggleActivityVote = useCallback(
     (activityId: string) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.voteActivity(activeTrip.id, activityId));
+      void applyMutation(() =>
+        tripsApi.voteActivity(activeTrip.id, activityId),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -443,7 +495,9 @@ export function useTripController() {
   const handleDeleteActivity = useCallback(
     (activityId: string) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.deleteActivity(activeTrip.id, activityId));
+      void applyMutation(() =>
+        tripsApi.deleteActivity(activeTrip.id, activityId),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -454,7 +508,12 @@ export function useTripController() {
   }, [activeTrip, applyMutation]);
 
   const handleScheduleActivity = useCallback(
-    (act: ActivityProposal, dayNum: number, timeStr = "10:00", endTime?: string) => {
+    (
+      act: ActivityProposal,
+      dayNum: number,
+      timeStr = "10:00",
+      endTime?: string,
+    ) => {
       if (!activeTrip) return;
       void applyMutation(() =>
         tripsApi.addEvent(activeTrip.id, {
@@ -490,13 +549,17 @@ export function useTripController() {
   const handleGenerateItinerary = useCallback(async () => {
     if (!activeTrip) return;
     if (!activeTrip.selectedDestination) {
-      setGenerationError("Veuillez voter d'abord pour une destination gagnante.");
+      setGenerationError(
+        "Veuillez voter d'abord pour une destination gagnante.",
+      );
       return;
     }
     setIsGenerating(true);
     setGenerationError("");
 
-    const existingNames = new Set(activeTrip.activities.map((a) => a.name.toLowerCase().trim()));
+    const existingNames = new Set(
+      activeTrip.activities.map((a) => a.name.toLowerCase().trim()),
+    );
     const adults = activeTrip.members.length || 6;
     const { checkin, checkout } = findBestTravelWindow(
       activeTrip.availabilities,
@@ -541,25 +604,32 @@ export function useTripController() {
         transport = mock.averageLocalTransportCostPerDay;
       }
 
-      const fresh = incoming.filter((a) => !existingNames.has(a.name.toLowerCase().trim()));
+      const fresh = incoming.filter(
+        (a) => !existingNames.has(a.name.toLowerCase().trim()),
+      );
       if (fresh.length > 0) await tripsApi.bulkActivities(activeTrip.id, fresh);
       if (lodging != null || transport != null) {
         await tripsApi.patch(activeTrip.id, {
           ...(lodging != null ? { averageLodgingCostPerNight: lodging } : {}),
-          ...(transport != null ? { averageLocalTransportCostPerDay: transport } : {}),
+          ...(transport != null
+            ? { averageLocalTransportCostPerDay: transport }
+            : {}),
         });
       }
       const hasPlanned = activeTrip.itinerary.some((d) => d.events.length > 0);
       if (!hasPlanned) {
-        const empty = buildEmptyItinerary(activeTrip.targetDays, activeTrip.selectedDestination).map(
-          (d) => ({ day: d.day, title: d.title, events: [] }),
-        );
+        const empty = buildEmptyItinerary(
+          activeTrip.targetDays,
+          activeTrip.selectedDestination,
+        ).map((d) => ({ day: d.day, title: d.title, events: [] }));
         await tripsApi.putItinerary(activeTrip.id, empty);
       }
       suggestionPageRef.current = 0; // page 0 vient d'être chargée ; « plus » ira en page 1
       await openTrip(activeTrip.id);
     } catch (err) {
-      setGenerationError(err instanceof ApiError ? err.message : "Génération impossible.");
+      setGenerationError(
+        err instanceof ApiError ? err.message : "Génération impossible.",
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -577,7 +647,9 @@ export function useTripController() {
     setIsGenerating(true);
     setGenerationError("");
     try {
-      const existingNames = new Set(activeTrip.activities.map((a) => a.name.toLowerCase().trim()));
+      const existingNames = new Set(
+        activeTrip.activities.map((a) => a.name.toLowerCase().trim()),
+      );
       for (let tries = 0; tries < 4; tries++) {
         const nextPage = suggestionPageRef.current + 1;
         const data = (await suggestActivities({
@@ -602,7 +674,9 @@ export function useTripController() {
       }
       return 0;
     } catch (err) {
-      setGenerationError(err instanceof ApiError ? err.message : "Recherche impossible.");
+      setGenerationError(
+        err instanceof ApiError ? err.message : "Recherche impossible.",
+      );
       return 0;
     } finally {
       setIsGenerating(false);
@@ -667,7 +741,9 @@ export function useTripController() {
       },
     ) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.updateEvent(activeTrip.id, eventId, fields));
+      void applyMutation(() =>
+        tripsApi.updateEvent(activeTrip.id, eventId, fields),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -675,7 +751,9 @@ export function useTripController() {
   const handleAddAvailability = useCallback(
     (start: string, end: string) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.addAvailability(activeTrip.id, { start, end }));
+      void applyMutation(() =>
+        tripsApi.addAvailability(activeTrip.id, { start, end }),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -683,7 +761,9 @@ export function useTripController() {
   const handleDeleteAvailability = useCallback(
     (availId: string) => {
       if (!activeTrip) return;
-      void applyMutation(() => tripsApi.deleteAvailability(activeTrip.id, availId));
+      void applyMutation(() =>
+        tripsApi.deleteAvailability(activeTrip.id, availId),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -692,13 +772,17 @@ export function useTripController() {
   const uploadDoc = useCallback(
     (name: string, sizeBytes?: number) => {
       if (!activeTrip) return;
-      const size = sizeBytes ? (sizeBytes / (1024 * 1024)).toFixed(1) + " MB" : "120 KB";
+      const size = sizeBytes
+        ? (sizeBytes / (1024 * 1024)).toFixed(1) + " MB"
+        : "120 KB";
       const type = name.endsWith(".pdf")
         ? "pdf"
         : name.endsWith(".png") || name.endsWith(".jpg")
           ? "image"
           : "doc";
-      void applyMutation(() => tripsApi.addDocument(activeTrip.id, { name, type, size }));
+      void applyMutation(() =>
+        tripsApi.addDocument(activeTrip.id, { name, type, size }),
+      );
     },
     [activeTrip, applyMutation],
   );
@@ -707,7 +791,9 @@ export function useTripController() {
     (e: FormEvent) => {
       e.preventDefault();
       if (!simulatedDocName.trim()) return;
-      const name = simulatedDocName.includes(".") ? simulatedDocName : simulatedDocName + ".pdf";
+      const name = simulatedDocName.includes(".")
+        ? simulatedDocName
+        : simulatedDocName + ".pdf";
       uploadDoc(name);
       setSimulatedDocName("");
     },
@@ -731,11 +817,17 @@ export function useTripController() {
         "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80",
         "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=600&q=80",
       ];
-      const url = photoUrlInput.trim() || fallbacks[Math.floor(Math.random() * fallbacks.length)];
-      const caption = photoCaptionInput.trim() || "Un magnifique spot repéré pour le séjour !";
+      const url =
+        photoUrlInput.trim() ||
+        fallbacks[Math.floor(Math.random() * fallbacks.length)];
+      const caption =
+        photoCaptionInput.trim() ||
+        "Un magnifique spot repéré pour le séjour !";
       setPhotoUrlInput("");
       setPhotoCaptionInput("");
-      void applyMutation(() => tripsApi.addPhoto(activeTrip.id, { url, caption }));
+      void applyMutation(() =>
+        tripsApi.addPhoto(activeTrip.id, { url, caption }),
+      );
     },
     [activeTrip, photoUrlInput, photoCaptionInput, applyMutation],
   );
@@ -781,7 +873,11 @@ export function useTripController() {
   const currentMember: Member | null = useMemo(
     () =>
       currentUser
-        ? { id: currentUser.id, name: currentUser.displayName, avatar: currentUser.avatar ?? "" }
+        ? {
+            id: currentUser.id,
+            name: currentUser.displayName,
+            avatar: currentUser.avatar ?? "",
+          }
         : null,
     [currentUser],
   );
