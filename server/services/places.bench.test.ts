@@ -74,6 +74,14 @@ const CASES: Case[] = [
     contain: ["mont Blanc", "aiguille du Midi", "Mer de Glace", "Montenvers"],
     notContain: ["pointe"],
   },
+  {
+    city: "Viviers, Ardèche, France",
+    // Petite commune près du Rhône : SURTOUT aucune CENTRALE (Tricastin/Cruas =
+    // sites industriels, pas des visites). La cathédrale Saint-Vincent (plus petite
+    // cathédrale de France) est le point d'intérêt emblématique.
+    contain: ["cathédrale"],
+    notContain: ["centrale", "nucléaire", "Tricastin", "Cruas"],
+  },
 ];
 
 describe.skipIf(!process.env.RUN_BENCH)(

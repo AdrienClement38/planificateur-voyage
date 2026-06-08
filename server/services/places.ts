@@ -739,15 +739,17 @@ async function wikidataPlaceFilter(
 async function wikidataPurge(qids: string[]): Promise<Set<string>> {
   if (qids.length === 0) return new Set();
   const values = qids.map((q) => `wd:${q}`).join(" ");
-  // Purge LOURDE : rivières (Q355304), chaînes/massifs (Q46831), communes SÉPARÉES
-  // (Q486972 hors quartier Q123705/Q2983893), et œuvre d'art exposée DANS un édifice
-  // (basilique, musée, église, palais — P276 → bâtiment) = un OBJET, pas un « lieu »
-  // à part (ex. La Pietà, David ; déjà listée dans « Œuvres à voir » du lieu). On
-  // GARDE les statues en EXTÉRIEUR (Manneken-Pis, Statue de la Liberté), dont le lieu
-  // n'est pas un édifice clos. Requête à plusieurs branches → la plus coûteuse.
+  // Purge LOURDE : rivières (Q355304), chaînes/massifs (Q46831), CENTRALES électriques
+  // (Q159719, dont les centrales NUCLÉAIRES Tricastin/Cruas — un site industriel, pas
+  // une visite ; les BARRAGES Q12323 ne sont PAS des centrales → conservés), communes
+  // SÉPARÉES (Q486972 hors quartier Q123705/Q2983893), et œuvre d'art exposée DANS un
+  // édifice (basilique, musée, église, palais — P276 → bâtiment) = un OBJET, pas un
+  // « lieu » à part (ex. La Pietà, David ; déjà listée dans « Œuvres à voir » du lieu).
+  // On GARDE les statues en EXTÉRIEUR (Manneken-Pis, Statue de la Liberté), dont le
+  // lieu n'est pas un édifice clos. Requête à plusieurs branches → la plus coûteuse.
   const heavy =
     `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } { ` +
-    `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q46831 } ` +
+    `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q46831 wd:Q159719 } ` +
     `} UNION { ` +
     `?item wdt:P31/wdt:P279* wd:Q486972. ` +
     `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?q. VALUES ?q { wd:Q123705 wd:Q2983893 } } ` +
