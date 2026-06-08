@@ -188,7 +188,15 @@ export function photonToCitySuggestions(data: unknown): CitySuggestion[] {
     const lat = f.geometry?.coordinates?.[1];
     if (typeof lat !== "number" || typeof lon !== "number") continue;
     const country = p.country?.trim() || undefined;
-    const label = country ? `${name}, ${country}` : name;
+    const county = p.county?.trim();
+    // Commune homonyme (≠ grande ville) : on glisse le DÉPARTEMENT dans le label.
+    // Sinon « Viviers, France » est ambigu — le dédup par label FUSIONNE les homonymes
+    // (Viviers Ardèche vs Moselle → une seule entrée) ET, surtout, la destination
+    // STOCKÉE est re-géocodée par le moteur sur la MAUVAISE ville. « Viviers, Ardèche,
+    // France » règle les deux. Les grandes villes (osm_value="city") restent propres.
+    const withCounty =
+      p.osm_value !== "city" && county && county !== name ? county : null;
+    const label = [name, withCounty, country].filter(Boolean).join(", ");
     const key = label.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -198,7 +206,7 @@ export function photonToCitySuggestions(data: unknown): CitySuggestion[] {
         name,
         country,
         countryCode: p.countrycode?.toUpperCase(),
-        region: [p.state, p.county].filter(Boolean).join(", ") || undefined,
+        region: p.state?.trim() || county || undefined, // sous-titre = région (le dépt est déjà dans le label si commune)
         lat,
         lon,
       },
