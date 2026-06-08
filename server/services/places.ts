@@ -101,6 +101,130 @@ async function geocode(
   return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
 }
 
+// ----------------------------------------------- Autocomplétion de villes (Photon)
+
+/**
+ * Suggestion de ville pour l'autocomplétion de la DESTINATION d'un voyage.
+ * `label` est la forme canonique « Ville, Pays » (FR), prête à être stockée ET
+ * géocodée proprement par le moteur de suggestions — c'est le verrou anti-
+ * « garbage » : on ne valide qu'une ville RÉELLE. `lat`/`lon` sont les vraies
+ * coordonnées (Photon) ; on les renvoie pour un futur usage (éviter un
+ * re-géocodage). `region`/`countryCode` ne servent qu'à l'affichage de la liste
+ * (drapeau + ligne de désambiguïsation). 100 % données réelles (OSM via Photon).
+ */
+export interface CitySuggestion {
+  /** Forme canonique « Ville, Pays » (FR) — valeur stockée et géocodable. */
+  label: string;
+  /** Nom seul de la ville (FR si disponible). */
+  name: string;
+  /** Pays (FR), si connu. */
+  country?: string;
+  /** Code ISO 3166-1 alpha-2 (majuscules) → drapeau côté front. */
+  countryCode?: string;
+  /** Région/département, pour désambiguïser visuellement (PAS inclus dans `label`). */
+  region?: string;
+  lat: number;
+  lon: number;
+}
+
+// Types OSM `place=*` retenus comme destinations de voyage valides : on garde
+// villes/communes/îles et on écarte le bruit (hameaux, quartiers, lieux-dits,
+// pays, régions) qui géocode mal ou n'a pas de sens comme destination précise.
+const CITY_PLACE_VALUES = new Set([
+  "city",
+  "town",
+  "village",
+  "municipality",
+  "island",
+]);
+
+interface PhotonFeature {
+  properties?: {
+    name?: string;
+    country?: string;
+    countrycode?: string;
+    state?: string;
+    county?: string;
+    osm_key?: string;
+    osm_value?: string;
+  };
+  geometry?: { coordinates?: [number, number] };
+}
+
+/**
+ * Transforme la réponse GeoJSON de Photon en suggestions de villes propres.
+ * Fonction PURE (sans réseau) → testée unitairement. Ne garde que les `place=*`
+ * pertinents (cf. CITY_PLACE_VALUES), construit un `label` « Ville, Pays », et
+ * déduplique par label (Photon renvoie parfois le même lieu en double).
+ */
+export function photonToCitySuggestions(data: unknown): CitySuggestion[] {
+  const features = (data as { features?: PhotonFeature[] } | null)?.features;
+  if (!Array.isArray(features)) return [];
+  const out: CitySuggestion[] = [];
+  const seen = new Set<string>();
+  for (const f of features) {
+    const p = f.properties ?? {};
+    const name = p.name?.trim();
+    if (!name) continue;
+    // On ne propose QUE des lieux habités pertinents (pas de rue/POI/pays).
+    if (p.osm_key !== "place" || !CITY_PLACE_VALUES.has(p.osm_value ?? ""))
+      continue;
+    const lon = f.geometry?.coordinates?.[0];
+    const lat = f.geometry?.coordinates?.[1];
+    if (typeof lat !== "number" || typeof lon !== "number") continue;
+    const country = p.country?.trim() || undefined;
+    const label = country ? `${name}, ${country}` : name;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      label,
+      name,
+      country,
+      countryCode: p.countrycode?.toUpperCase(),
+      region: [p.state, p.county].filter(Boolean).join(", ") || undefined,
+      lat,
+      lon,
+    });
+  }
+  return out;
+}
+
+// Cache mémoire court (10 min) des suggestions par requête : l'autocomplétion
+// retape souvent les mêmes préfixes, et Photon est un service public gratuit —
+// on évite de le solliciter inutilement (politesse + latence quasi nulle si chaud).
+const GEO_CACHE = new Map<string, { at: number; items: CitySuggestion[] }>();
+const GEO_TTL = 10 * 60 * 1000;
+
+/**
+ * Autocomplétion typeahead : interroge Photon (komoot, basé OSM, sans clé) pour
+ * un préfixe et renvoie des villes RÉELLES { label, lat, lon, … }. `lang=fr` →
+ * noms et pays en français (« Barcelone, Espagne »). Tolérant à l'échec : renvoie
+ * `[]` si Photon est injoignable (l'UI affiche alors un simple champ libre).
+ */
+export async function suggestCities(
+  query: string,
+  limit = 6,
+): Promise<CitySuggestion[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const cap = Math.min(Math.max(limit, 1), 10);
+  const cacheKey = `${cap}|${q.toLowerCase()}`;
+  const hit = GEO_CACHE.get(cacheKey);
+  if (hit && Date.now() - hit.at < GEO_TTL) return hit.items;
+  // On demande plus large que `cap` (le filtre « place » écarte ensuite
+  // rues/POI/régions), puis on tronque à `cap` après filtrage.
+  const url =
+    `https://photon.komoot.io/api?q=${encodeURIComponent(q)}` +
+    `&lang=fr&limit=${Math.min(cap * 3, 20)}`;
+  const data = await fetchJson(url, 4500);
+  const items = photonToCitySuggestions(data).slice(0, cap);
+  // On ne met en cache QUE les succès (≥1 résultat) : un échec réseau ne doit pas
+  // se figer 10 min (auto-réparation à la frappe suivante).
+  if (items.length > 0) GEO_CACHE.set(cacheKey, { at: Date.now(), items });
+  return items;
+}
+
 /** Récupère les intros Wikipédia (fr) pour une liste de titres, en un appel. */
 async function fetchExtracts(
   titles: string[],
@@ -629,14 +753,15 @@ async function wikidataPurge(qids: string[]): Promise<Set<string>> {
 }
 
 /**
- * Vues FR minimales pour qu'une enceinte SPORTIVE (stade/arène) reste en haut du
- * classement : en dessous, c'est un stade LOCAL « au pif » (pas une destination
- * touristique) → rétrogradé. Calibré sur un GOUFFRE observé dans les données :
- * stades mondiaux > 300k vues FR/3 ans (Camp Nou 513k, Vélodrome 520k, Stade de
- * France 761k, Wembley 339k) ; stades locaux < 51k (RCDE 51k, Karaïskákis 34k,
- * Ullevaal 15k, Bislett 4k). 150k tombe pile au milieu du vide → robuste.
+ * Plancher de vues FR (3 ans) pour qu'un stade reste affiché. On ne garde QUE le
+ * stade le PLUS consulté de la ville (l'iconique) ET seulement s'il dépasse ce
+ * plancher ; tous les autres stades (2ᵉ rang local) sont rétrogradés. Un SEUIL
+ * ABSOLU ne marche PAS : Lluís-Companys (307k, 2ᵉ de Barcelone, à virer) dépasse
+ * Old Trafford (122k) et Anfield (127k) — stades-villes mythiques à garder. D'où
+ * la règle « top de la ville + plancher ». 100k garde Old Trafford/Anfield et vire
+ * les stades locaux (Ullevaal 15k, Karaïskákis 34k, Bislett 4k).
  */
-const STADIUM_VIEWS_MIN = 150_000;
+const STADIUM_VIEWS_MIN = 100_000;
 
 /**
  * Classe les lieux À RÉTROGRADER (palier du bas, JAMAIS supprimés) par une règle
@@ -969,13 +1094,25 @@ async function discoverWikidata(
       p.fame = views; // pour l'admissibilité (≥8) et l'affichage
       p.views = views; // signal de 1er rang, distinct de fame (cf. tri final)
     }
-    // Enceinte SPORTIVE non touristique ET peu consultée = stade LOCAL « au pif »
-    // (pas une destination) → rétrogradée. Les stades MONDIAUX (Camp Nou, Vélodrome,
-    // Wembley… > seuil) restent ; le panathénaïque est épargné via « site touristique ».
-    if (demote.sports.has(outIds[i]) && (p.views ?? 0) < STADIUM_VIEWS_MIN) {
-      p.demote = true;
-    }
   });
+  // STADES : on ne garde QUE le PLUS consulté de la ville (l'iconique), et seulement
+  // s'il dépasse le plancher de notoriété ; tous les autres stades (2ᵉ rang local)
+  // sont rétrogradés. Ainsi Camp Nou (top Barcelone) reste mais Lluís-Companys (2ᵉ)
+  // part ; Wembley (top Londres) reste mais l'Emirates (2ᵉ) part ; à Athènes le top
+  // moderne (Karaïskákis 34k) tombe sous le plancher → tous partent (sauf le
+  // panathénaïque, marqué « site touristique », jamais dans demote.sports). Un stade
+  // marqué « site touristique » n'est PAS dans demote.sports → gardé d'office.
+  const sportIdx = outIds
+    .map((id, i) => i)
+    .filter((i) => demote.sports.has(outIds[i]));
+  let topI = -1;
+  for (const i of sportIdx) {
+    if (topI < 0 || (out[i].views ?? 0) > (out[topI].views ?? 0)) topI = i;
+  }
+  for (const i of sportIdx) {
+    const keep = i === topI && (out[i].views ?? 0) >= STADIUM_VIEWS_MIN;
+    if (!keep) out[i].demote = true;
+  }
   // Tri local par vues/fame. NB : l'ordre DÉFINITIF est posé au tri final de
   // doFetchPlaceActivities (qui fusionne toutes les sources et fait le palier
   // « vues d'abord »). Ce tri-ci ne sert qu'à un éventuel usage direct.
