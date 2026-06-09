@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type Dispatch,
-  type DragEvent,
   type FormEvent,
   type SetStateAction,
 } from "react";
@@ -27,6 +26,7 @@ import {
   type AuthUser,
   type TripSummary,
 } from "../lib/apiClient";
+import { useActiveTripContent } from "./useActiveTripContent";
 
 export type BudgetType = "Économique" | "Modéré" | "Luxe";
 export type ActivePage = "dashboard" | "account" | "create-trip";
@@ -89,18 +89,6 @@ export function useTripController() {
   const [newTripDestination, setNewTripDestination] = useState("");
   const [newTripDays, setNewTripDays] = useState(4);
   const [newTripBudget, setNewTripBudget] = useState<BudgetType>("Modéré");
-  const [newDestName, setNewDestName] = useState("");
-  const [chatText, setChatText] = useState("");
-  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
-  const [dragActive, setDragActive] = useState(false);
-  const [simulatedDocName, setSimulatedDocName] = useState("");
-  const [photoUrlInput, setPhotoUrlInput] = useState("");
-  const [photoCaptionInput, setPhotoCaptionInput] = useState("");
-  const [manualEventDay, setManualEventDay] = useState(1);
-  const [manualEventTime, setManualEventTime] = useState("10:00");
-  const [manualEventEndTime, setManualEventEndTime] = useState("");
-  const [manualEventDesc, setManualEventDesc] = useState("");
-  const [manualEventCost, setManualEventCost] = useState(0);
   const [isBudgetDropdownOpen, setIsBudgetDropdownOpen] = useState(false);
   const [joinTripIdInput, setJoinTripIdInput] = useState("");
 
@@ -187,6 +175,10 @@ export function useTripController() {
     },
     [],
   );
+
+  // Contenu collaboratif du voyage actif (votes, planning, chat, médias, drag-and-
+  // drop) : hook dédié, ne dépendant que du voyage actif et de `applyMutation`.
+  const content = useActiveTripContent({ activeTrip, applyMutation });
 
   const loadAfterAuth = useCallback(
     async (user: AuthUser) => {
@@ -440,95 +432,6 @@ export function useTripController() {
 
   // ----------------------------------------------------------------- Contenu
 
-  const handleAddDestination = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
-      if (!activeTrip || !newDestName.trim()) return;
-      const name = newDestName.trim();
-      setNewDestName("");
-      void applyMutation(() =>
-        tripsApi.addDestination(activeTrip.id, { name }),
-      );
-    },
-    [activeTrip, newDestName, applyMutation],
-  );
-
-  const handleVoteDestination = useCallback(
-    (destId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() => tripsApi.voteDestination(activeTrip.id, destId));
-    },
-    [activeTrip, applyMutation],
-  );
-
-  /** Définit explicitement la destination du voyage (le vote ne le fait pas tout seul). */
-  const handleChooseDestination = useCallback(
-    (name: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.patch(activeTrip.id, { selectedDestination: name }),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleDeleteDestinationProposal = useCallback(
-    (destId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.deleteDestination(activeTrip.id, destId),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleToggleActivityVote = useCallback(
-    (activityId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.voteActivity(activeTrip.id, activityId),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleDeleteActivity = useCallback(
-    (activityId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.deleteActivity(activeTrip.id, activityId),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleClearActivities = useCallback(() => {
-    if (!activeTrip) return;
-    void applyMutation(() => tripsApi.clearActivities(activeTrip.id));
-  }, [activeTrip, applyMutation]);
-
-  const handleScheduleActivity = useCallback(
-    (
-      act: ActivityProposal,
-      dayNum: number,
-      timeStr = "10:00",
-      endTime?: string,
-    ) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.addEvent(activeTrip.id, {
-          day: dayNum,
-          time: timeStr,
-          endTime: endTime || undefined,
-          description: `${act.name}${act.source ? ` [${act.source}]` : ""}`,
-          cost: act.cost,
-          bookingUrl: act.bookingUrl || undefined,
-        }),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
   const handleAutoPlanFromVotes = useCallback(async () => {
     if (!activeTrip) return;
     setIsGenerating(true);
@@ -683,191 +586,6 @@ export function useTripController() {
     }
   }, [activeTrip, openTrip]);
 
-  const handleSendChat = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
-      if (!activeTrip || !chatText.trim()) return;
-      const text = chatText.trim();
-      setChatText("");
-      void applyMutation(() => tripsApi.sendMessage(activeTrip.id, text));
-    },
-    [activeTrip, chatText, applyMutation],
-  );
-
-  const handleAddManualEvent = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
-      if (!activeTrip || !manualEventDesc.trim()) return;
-      const payload = {
-        day: Number(manualEventDay),
-        time: manualEventTime,
-        endTime: manualEventEndTime.trim() || undefined,
-        description: manualEventDesc,
-        cost: Number(manualEventCost) || 0,
-      };
-      setManualEventDesc("");
-      setManualEventCost(0);
-      setManualEventEndTime("");
-      void applyMutation(() => tripsApi.addEvent(activeTrip.id, payload));
-    },
-    [
-      activeTrip,
-      manualEventDay,
-      manualEventTime,
-      manualEventEndTime,
-      manualEventDesc,
-      manualEventCost,
-      applyMutation,
-    ],
-  );
-
-  const handleDeleteEvent = useCallback(
-    (_dayNum: number, eventId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() => tripsApi.deleteEvent(activeTrip.id, eventId));
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleUpdateEvent = useCallback(
-    (
-      eventId: string,
-      fields: {
-        time?: string;
-        endTime?: string | null;
-        description?: string;
-        cost?: number;
-        bookingUrl?: string | null;
-      },
-    ) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.updateEvent(activeTrip.id, eventId, fields),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleAddAvailability = useCallback(
-    (start: string, end: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.addAvailability(activeTrip.id, { start, end }),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleDeleteAvailability = useCallback(
-    (availId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() =>
-        tripsApi.deleteAvailability(activeTrip.id, availId),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  // --- Médias ---
-  const uploadDoc = useCallback(
-    (name: string, sizeBytes?: number) => {
-      if (!activeTrip) return;
-      const size = sizeBytes
-        ? (sizeBytes / (1024 * 1024)).toFixed(1) + " MB"
-        : "120 KB";
-      const type = name.endsWith(".pdf")
-        ? "pdf"
-        : name.endsWith(".png") || name.endsWith(".jpg")
-          ? "image"
-          : "doc";
-      void applyMutation(() =>
-        tripsApi.addDocument(activeTrip.id, { name, type, size }),
-      );
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleAddManualDoc = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
-      if (!simulatedDocName.trim()) return;
-      const name = simulatedDocName.includes(".")
-        ? simulatedDocName
-        : simulatedDocName + ".pdf";
-      uploadDoc(name);
-      setSimulatedDocName("");
-    },
-    [simulatedDocName, uploadDoc],
-  );
-
-  /** Téléverse un vrai fichier (image/PDF) vers l'API (limites côté serveur). */
-  const handleUploadFile = useCallback(
-    (file: File) => {
-      if (!activeTrip) return;
-      void applyMutation(() => tripsApi.uploadFile(activeTrip.id, file));
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleAddPhoto = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
-      if (!activeTrip) return;
-      const fallbacks = [
-        "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80",
-        "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=600&q=80",
-      ];
-      const url =
-        photoUrlInput.trim() ||
-        fallbacks[Math.floor(Math.random() * fallbacks.length)];
-      const caption =
-        photoCaptionInput.trim() ||
-        "Un magnifique spot repéré pour le séjour !";
-      setPhotoUrlInput("");
-      setPhotoCaptionInput("");
-      void applyMutation(() =>
-        tripsApi.addPhoto(activeTrip.id, { url, caption }),
-      );
-    },
-    [activeTrip, photoUrlInput, photoCaptionInput, applyMutation],
-  );
-
-  const handleDeleteDoc = useCallback(
-    (docId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() => tripsApi.deleteDocument(activeTrip.id, docId));
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleDeletePhoto = useCallback(
-    (photoId: string) => {
-      if (!activeTrip) return;
-      void applyMutation(() => tripsApi.deletePhoto(activeTrip.id, photoId));
-    },
-    [activeTrip, applyMutation],
-  );
-
-  const handleDrag = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
-    else if (e.type === "dragleave") setDragActive(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragActive(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file && activeTrip) {
-        void applyMutation(() => tripsApi.uploadFile(activeTrip.id, file));
-      }
-    },
-    [activeTrip, applyMutation],
-  );
-
   // ----------------------------------------------------------------- Dérivés
 
   const currentMember: Member | null = useMemo(
@@ -924,29 +642,8 @@ export function useTripController() {
     setNewTripDays,
     newTripBudget,
     setNewTripBudget,
-    newDestName,
-    setNewDestName,
-    chatText,
-    setChatText,
-    activityFilter,
-    setActivityFilter,
-    dragActive,
-    simulatedDocName,
-    setSimulatedDocName,
-    photoUrlInput,
-    setPhotoUrlInput,
-    photoCaptionInput,
-    setPhotoCaptionInput,
-    manualEventDay,
-    setManualEventDay,
-    manualEventTime,
-    setManualEventTime,
-    manualEventEndTime,
-    setManualEventEndTime,
-    manualEventDesc,
-    setManualEventDesc,
-    manualEventCost,
-    setManualEventCost,
+    // contenu collaboratif (état de formulaire + handlers) : cf. useActiveTripContent
+    ...content,
     isBudgetDropdownOpen,
     setIsBudgetDropdownOpen,
     joinTripIdInput,
@@ -960,31 +657,10 @@ export function useTripController() {
     handleJoinTrip,
     handleUpdateTransportValue,
     handlePatchTrip,
-    // contenu
-    handleAddDestination,
-    handleVoteDestination,
-    handleChooseDestination,
-    handleDeleteDestinationProposal,
-    handleToggleActivityVote,
-    handleDeleteActivity,
-    handleClearActivities,
-    handleScheduleActivity,
+    // contenu — génération d'itinéraire (le reste vient de ...content ci-dessus)
     handleAutoPlanFromVotes,
     handleGenerateItinerary,
     handleMoreSuggestions,
-    handleSendChat,
-    handleAddManualEvent,
-    handleDeleteEvent,
-    handleUpdateEvent,
-    handleAddAvailability,
-    handleDeleteAvailability,
-    handleAddManualDoc,
-    handleUploadFile,
-    handleAddPhoto,
-    handleDeleteDoc,
-    handleDeletePhoto,
-    handleDrag,
-    handleDrop,
   };
 }
 
