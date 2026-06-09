@@ -6,6 +6,7 @@
  * échec de récup vaut `undefined` (≠ « 0 vue ») pour ne jamais déclasser à tort.
  */
 import { fetchJson } from "./http";
+import { capMap } from "./cache";
 
 /**
  * Vues Wikipédia sur les 3 DERNIÈRES ANNÉES (≠ 60 j) pour des titres d'articles,
@@ -19,6 +20,7 @@ import { fetchJson } from "./http";
 // est quasi instantané (et les lieux partagés entre villes profitent du cache).
 const PV_CACHE = new Map<string, { at: number; v: number }>();
 const PV_TTL = 14 * 24 * 60 * 60 * 1000;
+const PV_CACHE_MAX = 5000; // toit d'entrées → mémoire bornée (process longue durée)
 
 async function wikiPageviews(
   lang: string,
@@ -54,6 +56,7 @@ async function wikiPageviews(
         let s = 0;
         for (const it of data.items ?? []) s += it.views ?? 0;
         PV_CACHE.set(key, { at: now.getTime(), v: s }); // ne cache QUE les succès
+        capMap(PV_CACHE, PV_CACHE_MAX);
         return s;
       }
     }

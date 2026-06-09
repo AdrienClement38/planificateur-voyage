@@ -8,6 +8,7 @@
  * une ville non trouvée renvoie `null`/`[]`, jamais un résultat fabriqué.
  */
 import { fetchJson } from "./http";
+import { capMap } from "./cache";
 
 /** Géocode une destination en { lat, lon } via Nominatim, ou `null` si introuvable. */
 export async function geocode(
@@ -150,6 +151,7 @@ export function photonToCitySuggestions(data: unknown): CitySuggestion[] {
 // on évite de le solliciter inutilement (politesse + latence quasi nulle si chaud).
 const GEO_CACHE = new Map<string, { at: number; items: CitySuggestion[] }>();
 const GEO_TTL = 10 * 60 * 1000;
+const GEO_CACHE_MAX = 1000; // toit d'entrées (le TTL court de 10 min borne déjà)
 
 /**
  * Autocomplétion typeahead : interroge Photon (komoot, basé OSM, sans clé) pour
@@ -178,5 +180,6 @@ export async function suggestCities(
   // On ne met en cache QUE les succès (≥1 résultat) : un échec réseau ne doit pas
   // se figer 10 min (auto-réparation à la frappe suivante).
   if (items.length > 0) GEO_CACHE.set(cacheKey, { at: Date.now(), items });
+  capMap(GEO_CACHE, GEO_CACHE_MAX);
   return items;
 }

@@ -6,6 +6,7 @@
  * Utilisé par la route /api ; n'intervient PAS dans le classement des activités.
  */
 import { fetchJson } from "./http";
+import { capMap } from "./cache";
 
 export interface PlaceHighlight {
   /** Nom de l'œuvre (FR). */
@@ -35,6 +36,7 @@ const highlightsCache = new Map<
 >();
 const HL_TTL = 6 * 60 * 60 * 1000; // 6 h
 const HL_TTL_EMPTY = 30 * 60 * 1000; // 30 min si vide/échec (auto-réparation)
+const HL_CACHE_MAX = 2000; // toit d'entrées → mémoire bornée (process longue durée)
 
 /**
  * Œuvres majeures à voir DANS des lieux (musée, chapelle, cathédrale…), en LOT.
@@ -75,6 +77,7 @@ export async function discoverPlaceHighlightsBatch(
       items,
       ttl: items.length ? HL_TTL : HL_TTL_EMPTY,
     });
+    capMap(highlightsCache, HL_CACHE_MAX);
   }
   return out;
 }

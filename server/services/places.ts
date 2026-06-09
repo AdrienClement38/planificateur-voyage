@@ -22,6 +22,7 @@ import { discoverWikipedia } from "./wikipedia";
 import { discoverWikivoyage } from "./wikivoyage";
 import { discoverWikidata } from "./wikidata";
 import { enrichWikiMedia } from "./enrich";
+import { capMap } from "./cache";
 
 export type { PlaceActivity };
 
@@ -33,6 +34,7 @@ const cache = new Map<
 >();
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6h (résultat complet)
 const CACHE_TTL_DEGRADED = 15 * 60 * 1000; // 15 min si Wikidata a échoué (auto-réparation)
+const SUGG_CACHE_MAX = 500; // toit d'entrées (≈ villes générées) → mémoire bornée
 
 // Entités à BANNIR du résultat final (notoriété trompeuse) : divisions
 // administratives (province, métropole, région…) et événements (festival,
@@ -204,6 +206,7 @@ async function doFetchPlaceActivities(
     if (curated.length > 0) {
       const ttl = wd.length > 0 ? CACHE_TTL : CACHE_TTL_DEGRADED;
       cache.set(key, { at: Date.now(), places: curated, ttl });
+      capMap(cache, SUGG_CACHE_MAX);
     }
     return curated;
   } catch {
