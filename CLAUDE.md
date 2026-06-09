@@ -56,7 +56,11 @@ App.tsx      Provider + AppShell (gating auth / chargement / état vide)
 db/          schema (Drizzle) · client (PGlite/Postgres) · migrate-runner · migrations/
 auth/        password (argon2) · session · middleware (attachUser, requireAuth)
 routes/      auth · trips · trip-content (collaboratif) · uploads
-services/    trip-aggregate (DB normalisée → forme Trip dénormalisée du front)
+services/    trip-aggregate (DB normalisée → forme Trip dénormalisée du front) ·
+             moteur de suggestions MODULAIRE : places (orchestrateur fusion/dédup/
+             enrichissement) · geo (géocodage + autocomplétion) · sources wikidata,
+             overpass, wikipedia, wikivoyage, foursquare · ranking (vues Wikipédia) ·
+             classify · enrich · highlights (œuvres à voir) · core/http (contrat + helpers)
 server.ts    (racine) entrée : helmet, CORS, cookies, auth, routes, static, auto-migration
 ```
 

@@ -2,9 +2,13 @@
 
 > Récap complet du moteur de suggestions (sources, tri, filtres, œuvres,
 > robustesse, pré-chargement) et des décisions prises. Sert de **mémoire** pour
-> reprendre le travail. Tout est dans `server/services/places.ts` (sauf le
-> pré-chargement, dans `server/routes/trips.ts`, et l'UI dans
-> `src/features/ItineraryTab.tsx`).
+> reprendre le travail. Le moteur est **modulaire** dans `server/services/` :
+> `places.ts` (orchestrateur : fusion des sources, dédup, enrichissement, tri
+> final) délègue aux sources `wikidata` · `overpass` · `wikipedia` · `wikivoyage`
+> · `foursquare`, au `ranking` (vraies vues Wikipédia), aux helpers `geo` ·
+> `classify` · `enrich` · `core` · `http`, et à `highlights` (œuvres à voir).
+> Pré-chargement dans `server/routes/trips.ts`, UI dans
+> `src/features/ItineraryTab.tsx`.
 
 ## Vue d'ensemble
 
