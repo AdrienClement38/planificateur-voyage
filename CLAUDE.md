@@ -44,7 +44,9 @@ stores)**. Détails de déploiement dans le [README](README.md).
 ```
 domain/      Logique métier PURE, testée (budget · availability · itinerary · activities)
 lib/         apiClient (client API typé) · api (suggestActivities) · avatar · id · schemas (Zod)
-store/       useTripController (état + handlers API-backed) ; TripContext → useTripStore()
+store/       useTripController (cœur : auth · voyages · génération + handlers API-backed) ·
+             useActiveTripContent (édition collaborative du voyage actif : votes, planning,
+             chat, médias) ; TripContext → useTripStore()
 pages/       AuthScreen · CreateTripPage · AccountPage
 features/    DashboardSidebar · TripWorkspace · {Voting,Chat,Media,Itinerary}Tab
 components/  AppHeader · AvailabilityCalendar · OfflineIndicator · LoadingFallback
