@@ -13,7 +13,8 @@ import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
 import { createServer } from "node:http";
 import { initRealtime } from "./server/realtime";
-import { fetchPlaceActivities, discoverPlaceHighlightsBatch } from "./server/services/places";
+import { fetchPlaceActivities } from "./server/services/places";
+import { discoverPlaceHighlightsBatch } from "./server/services/highlights";
 import { suggestCities } from "./server/services/geo";
 
 dotenv.config();
