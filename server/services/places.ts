@@ -192,13 +192,27 @@ async function doFetchPlaceActivities(
     // Liste PROFONDE classée du plus pertinent au moins pertinent (notoriété),
     // pour alimenter la pagination « Voir d'autres idées ». Plafond généreux par
     // catégorie (pas d'affamage des villes mono-thème) et total raisonnable.
+    // 1er passage : VARIÉTÉ en tête (≤ 20 par catégorie). Le surplus d'une catégorie
+    // dominante n'est PAS jeté — mis de côté pour compléter la profondeur ensuite.
     const perCat: Record<string, number> = {};
     const curated: PlaceActivity[] = [];
+    const overflow: PlaceActivity[] = [];
     for (const p of pool) {
-      perCat[p.category] = (perCat[p.category] ?? 0) + 1;
-      if (perCat[p.category] > 20) continue; // plafond souple : laisse les villes mono-thème aller en profondeur
-      curated.push(p);
       if (curated.length >= 50) break;
+      perCat[p.category] = (perCat[p.category] ?? 0) + 1;
+      if (perCat[p.category] > 20) {
+        overflow.push(p);
+        continue;
+      }
+      curated.push(p);
+    }
+    // 2e passage : on COMPLÈTE jusqu'à 50 avec le surplus (déjà trié par notoriété).
+    // Sinon une mégapole mono-thème (NYC = 57 lieux « Visite ») reste tronquée à ~28
+    // par le seul plafond/catégorie, loin du plafond total de 50 voulu. La variété
+    // est préservée EN TÊTE ; la profondeur est remplie par les meilleurs suivants.
+    for (const p of overflow) {
+      if (curated.length >= 50) break;
+      curated.push(p);
     }
 
     // Si Wikidata n'a rien donné (échec/throttle), le classement par notoriété est
