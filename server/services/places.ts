@@ -96,6 +96,41 @@ export async function fetchPlaceActivities(
   }
 }
 
+/** Plafond total de la liste finale (alimente aussi la pagination « plus d'idées »). */
+const FINAL_LIMIT = 50;
+/** Variété en tête : au plus N par catégorie au 1er passage (le surplus comble ensuite). */
+const PER_CATEGORY_HEAD = 20;
+
+/**
+ * Curation finale d'un pool DÉJÀ TRIÉ par notoriété → liste affichée. Deux passages :
+ *  1. VARIÉTÉ en tête : au plus `PER_CATEGORY_HEAD` par catégorie (le surplus d'une
+ *     catégorie dominante est mis de côté, PAS jeté).
+ *  2. PROFONDEUR : on complète jusqu'à `FINAL_LIMIT` avec ce surplus (déjà trié).
+ * Sans le 2e passage, une mégapole mono-thème (New York = 57 lieux « Visite »)
+ * resterait tronquée à ~28 par le seul plafond/catégorie. Le 1er passage retient
+ * EXACTEMENT les mêmes items en tête qu'avant → top de liste inchangé ; le surplus
+ * n'arrive qu'en QUEUE. Fonction PURE (testée sans réseau).
+ */
+export function curate(pool: PlaceActivity[]): PlaceActivity[] {
+  const perCat: Record<string, number> = {};
+  const curated: PlaceActivity[] = [];
+  const overflow: PlaceActivity[] = [];
+  for (const p of pool) {
+    if (curated.length >= FINAL_LIMIT) break;
+    perCat[p.category] = (perCat[p.category] ?? 0) + 1;
+    if (perCat[p.category] > PER_CATEGORY_HEAD) {
+      overflow.push(p);
+      continue;
+    }
+    curated.push(p);
+  }
+  for (const p of overflow) {
+    if (curated.length >= FINAL_LIMIT) break;
+    curated.push(p);
+  }
+  return curated;
+}
+
 async function doFetchPlaceActivities(
   destination: string,
   key: string,
@@ -189,31 +224,10 @@ async function doFetchPlaceActivities(
     const withPhoto = ranked.filter((p) => p.imageUrl);
     const pool = withPhoto.length >= 5 ? withPhoto : ranked;
 
-    // Liste PROFONDE classée du plus pertinent au moins pertinent (notoriété),
-    // pour alimenter la pagination « Voir d'autres idées ». Plafond généreux par
-    // catégorie (pas d'affamage des villes mono-thème) et total raisonnable.
-    // 1er passage : VARIÉTÉ en tête (≤ 20 par catégorie). Le surplus d'une catégorie
-    // dominante n'est PAS jeté — mis de côté pour compléter la profondeur ensuite.
-    const perCat: Record<string, number> = {};
-    const curated: PlaceActivity[] = [];
-    const overflow: PlaceActivity[] = [];
-    for (const p of pool) {
-      if (curated.length >= 50) break;
-      perCat[p.category] = (perCat[p.category] ?? 0) + 1;
-      if (perCat[p.category] > 20) {
-        overflow.push(p);
-        continue;
-      }
-      curated.push(p);
-    }
-    // 2e passage : on COMPLÈTE jusqu'à 50 avec le surplus (déjà trié par notoriété).
-    // Sinon une mégapole mono-thème (NYC = 57 lieux « Visite ») reste tronquée à ~28
-    // par le seul plafond/catégorie, loin du plafond total de 50 voulu. La variété
-    // est préservée EN TÊTE ; la profondeur est remplie par les meilleurs suivants.
-    for (const p of overflow) {
-      if (curated.length >= 50) break;
-      curated.push(p);
-    }
+    // Liste PROFONDE (pagination « Voir d'autres idées »), curée en 2 passages :
+    // variété en tête PUIS remplissage jusqu'au plafond — cf. `curate` (fonction
+    // pure, testée unitairement : top de liste préservé, mégapoles comblées).
+    const curated = curate(pool);
 
     // Si Wikidata n'a rien donné (échec/throttle), le classement par notoriété est
     // dégradé → cache court (15 min) pour réessayer bientôt, au lieu de figer 6 h.
