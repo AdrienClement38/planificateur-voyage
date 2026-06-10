@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dedupKey, isNearDup } from "./places";
+import { dedupKey, isNearDup, distanceMeters, shareToken } from "./places";
 
 /**
  * Tests DÉTERMINISTES (sans réseau) de la déduplication des suggestions. Garantit
@@ -61,5 +61,27 @@ describe("isNearDup", () => {
     expect(isNearDup("union", "union square")).toBe(false);
     // « Musée d'Art » vs « Musée d'Art Moderne » : suffixe court mais pas « de … »
     expect(isNearDup("musee d art", "musee d art moderne")).toBe(false);
+  });
+});
+
+describe("distanceMeters", () => {
+  it("0 pour le même point, ~111 m pour 0,001° de latitude", () => {
+    expect(distanceMeters(48.8, 2.3, 48.8, 2.3)).toBe(0);
+    const d = distanceMeters(0, 0, 0.001, 0);
+    expect(d).toBeGreaterThan(105);
+    expect(d).toBeLessThan(118);
+  });
+});
+
+describe("shareToken", () => {
+  it("vrai si un mot ≥ 4 lettres est commun", () => {
+    expect(shareToken("musee guggenheim", "musee solomon r guggenheim")).toBe(
+      true,
+    );
+    expect(shareToken("grand central", "grand central terminal")).toBe(true);
+  });
+  it("faux sinon (lieux distincts voisins, noms sans rapport)", () => {
+    expect(shareToken("le pont", "la gare")).toBe(false);
+    expect(shareToken("louvre", "tour eiffel")).toBe(false);
   });
 });

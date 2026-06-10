@@ -98,6 +98,30 @@ export function isNearDup(k1: string, k2: string): boolean {
   );
 }
 
+/** Distance en mètres entre deux points (haversine) — pour la dédup par PROXIMITÉ. */
+export function distanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1);
+  const dLon = rad(lon2 - lon1);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Deux clés partagent-elles un mot SIGNIFICATIF (≥ 4 lettres) ? Garde-fou de la dédup
+ *  par proximité : on ne fusionne PAS deux lieux distincts voisins aux noms sans rapport. */
+export function shareToken(k1: string, k2: string): boolean {
+  const t2 = new Set(k2.split(" ").filter((t) => t.length >= 4));
+  return k1.split(" ").some((t) => t.length >= 4 && t2.has(t));
+}
+
 /**
  * Agrège plusieurs sources RÉELLES en parallèle puis fusionne :
  *   - Wikivoyage (listings curated + liens officiels), OpenStreetMap (Overpass,
@@ -212,6 +236,22 @@ async function doFetchPlaceActivities(
       // par « de/du/des… » — un vrai qualificatif, pas un mot distinctif (« aux Liens »,
       // « Moderne », « et contemporain » ne commencent pas par « de » → jamais fusionnés).
       if (seenKeys.some((s) => isNearDup(k, s))) continue;
+      // Dédup par PROXIMITÉ (« regarder les adresses ») : même endroit (< 110 m) ET un
+      // mot commun = même lieu quel que soit le nom (« Musée Solomon-R.-Guggenheim » ==
+      // « Musée Guggenheim », « Grand Central » == « Grand Central Terminal »). On garde
+      // le 1er rencontré (ordre des sources : Wikidata d'abord, le mieux renseigné).
+      if (
+        p.lat != null &&
+        p.lon != null &&
+        merged.some(
+          (m, i) =>
+            m.lat != null &&
+            m.lon != null &&
+            distanceMeters(p.lat!, p.lon!, m.lat, m.lon) < 110 &&
+            shareToken(k, seenKeys[i]),
+        )
+      )
+        continue;
       seen.add(k);
       seenKeys.push(k);
       merged.push(p);

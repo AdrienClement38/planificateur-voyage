@@ -10,6 +10,9 @@ import { fetchExtracts } from "./enrich";
 
 interface OverpassEl {
   tags?: Record<string, string>;
+  lat?: number;
+  lon?: number;
+  center?: { lat?: number; lon?: number };
 }
 
 function classifyTags(tags: Record<string, string>): {
@@ -121,6 +124,8 @@ export async function discoverOverpass(
     wiki?: string;
     qid?: string;
     category: Cat;
+    lat?: number;
+    lon?: number;
   }
   const byName = new Map<string, Entry>();
   for (const el of els) {
@@ -134,6 +139,8 @@ export async function discoverOverpass(
       wiki: wp && wp.startsWith("fr:") ? wp.slice(3) : undefined,
       qid: tags.wikidata,
       category: classifyTags(tags).category,
+      lat: el.lat ?? el.center?.lat,
+      lon: el.lon ?? el.center?.lon,
     });
   }
   if (byName.size === 0) return [];
@@ -204,6 +211,8 @@ export async function discoverOverpass(
       bookingUrl: mapsLink(e.name, destination),
       provider: "OpenStreetMap",
       wikiTitle: e.wiki,
+      lat: e.lat,
+      lon: e.lon,
     };
   });
 }

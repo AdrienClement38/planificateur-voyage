@@ -20,10 +20,13 @@ export async function discoverWikipedia(
 ): Promise<PlaceActivity[]> {
   const geoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=90&format=json`;
   const geoData = (await fetchJson(geoUrl)) as {
-    query?: { geosearch?: Array<{ title: string }> };
+    query?: {
+      geosearch?: Array<{ title: string; lat?: number; lon?: number }>;
+    };
   } | null;
   const results = geoData?.query?.geosearch ?? [];
   if (results.length === 0) return [];
+  const coordOf = new Map(results.map((r) => [r.title, r]));
 
   const destLower = destination.toLowerCase().split(/[,(]/)[0].trim();
   const isTown = (t: string) =>
@@ -51,6 +54,8 @@ export async function discoverWikipedia(
       duration,
       bookingUrl: mapsLink(title, destination),
       provider: "Wikipédia",
+      lat: coordOf.get(title)?.lat,
+      lon: coordOf.get(title)?.lon,
     };
   });
 }

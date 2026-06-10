@@ -135,6 +135,8 @@ export async function discoverWikivoyage(
       const guess = classifyTitle(name);
       // {{faire}} = activité → Loisir par défaut si le nom ne dit rien de précis.
       const generic = guess.category === "Visite";
+      const lat = parseFloat(f["latitude"] ?? "");
+      const lon = parseFloat(f["longitude"] ?? "");
       out.push({
         name,
         description: (
@@ -148,6 +150,8 @@ export async function discoverWikivoyage(
         provider: "Wikivoyage",
         wikiTitle:
           stripWiki(f["wikipédia"] || f["wikipedia"] || "") || undefined,
+        lat: Number.isFinite(lat) ? lat : undefined,
+        lon: Number.isFinite(lon) ? lon : undefined,
       });
     }
   };

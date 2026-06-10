@@ -56,6 +56,13 @@ export interface PlaceActivity {
    * « site touristique » (Grand Central) ne portent PAS ce drapeau → restent en haut.
    */
   demote?: boolean;
+  /**
+   * Coordonnées RÉELLES du lieu (si la source les fournit) — usage INTERNE :
+   * déduplication par PROXIMITÉ (deux entrées au même endroit = même lieu, quel que
+   * soit le nom : « Musée Solomon-R.-Guggenheim » == « Musée Guggenheim »). Non affiché.
+   */
+  lat?: number;
+  lon?: number;
 }
 
 /** Lien « Voir le lieu » : TOUJOURS une fiche Google Maps (uniforme, toutes sources). */

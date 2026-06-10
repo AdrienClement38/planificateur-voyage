@@ -116,6 +116,8 @@ interface WdAgg {
   sitelinks: number;
   types: Set<string>;
   image?: string;
+  lat?: number;
+  lon?: number;
 }
 
 // Interroge Wikidata autour d'un point, au-dessus d'un seuil de notoriété.
@@ -126,7 +128,7 @@ async function wikidataAround(
   radiusKm: number,
 ): Promise<Map<string, WdAgg>> {
   const sparql =
-    `SELECT ?item ?label ?sitelinks ?type ?image WHERE {` +
+    `SELECT ?item ?label ?sitelinks ?type ?image ?c WHERE {` +
     `SERVICE wikibase:around { ?item wdt:P625 ?c. bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral. bd:serviceParam wikibase:radius "${radiusKm}". }` +
     `?item wikibase:sitelinks ?sitelinks. FILTER(?sitelinks >= ${minSitelinks})` +
     `?item wdt:P31 ?type. ?item rdfs:label ?label. FILTER(lang(?label) = "fr")` +
@@ -141,6 +143,7 @@ async function wikidataAround(
         sitelinks?: { value?: string };
         type?: { value?: string };
         image?: { value?: string };
+        c?: { value?: string };
       }>;
     };
   };
@@ -168,6 +171,14 @@ async function wikidataAround(
     const ty = b.type?.value?.split("/").pop();
     if (ty) a.types.add(ty);
     if (!a.image && b.image?.value) a.image = b.image.value;
+    if (a.lat == null && b.c?.value) {
+      // WKT « Point(lon lat) » → coords pour la dédup par proximité.
+      const m = b.c.value.match(/Point\(([-\d.]+) ([-\d.]+)\)/);
+      if (m) {
+        a.lon = parseFloat(m[1]);
+        a.lat = parseFloat(m[2]);
+      }
+    }
   }
   return byId;
 }
@@ -242,6 +253,8 @@ export async function discoverWikidata(
         ? a.image.replace(/^http:/, "https:") + "?width=800"
         : undefined,
       demote: demote.transit.has(id) || undefined, // transit : rétrogradé d'office
+      lat: a.lat,
+      lon: a.lon,
     });
     outIds.push(id);
     if (out.length >= 55) break;

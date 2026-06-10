@@ -130,7 +130,9 @@ async function highlightsChunk(
     }
     const dedup = seen.get(lbl)!;
     const ak = artName.toLowerCase();
-    if (dedup.has(ak) || items.length >= 6) continue;
+    // L'œuvre NE doit pas être le lieu lui-même (la Statue de la Liberté n'est pas
+    // une « œuvre à voir » DANS la Statue de la Liberté).
+    if (ak === lbl || dedup.has(ak) || items.length >= 6) continue;
     dedup.add(ak);
     items.push({
       name: artName,
