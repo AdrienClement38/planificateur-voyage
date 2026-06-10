@@ -22,6 +22,7 @@ import { discoverWikipedia } from "./wikipedia";
 import { discoverWikivoyage } from "./wikivoyage";
 import { discoverWikidata } from "./wikidata";
 import { enrichWikiMedia } from "./enrich";
+import { fetchTitleViews } from "./ranking";
 import { capMap } from "./cache";
 
 export type { PlaceActivity };
@@ -40,14 +41,20 @@ const SUGG_CACHE_MAX = 500; // toit d'entrées (≈ villes générées) → mém
 // administratives (province, métropole, région…) et événements (festival,
 // championnat…) — ce ne sont pas des lieux à visiter.
 const NOISE_BLOCK =
-  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|universit[ée]|saint-si[èe]ge|ordre souverain|pr[ée]lature|convention|trait[ée] de\b|\baccord\b|conf[ée]rence|protocole|\bpacte\b|\bann[ée]e des\b|\bm[ée]tro\b|organisation|\bagence\b|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|attentat|\bop[ée]ration\b|\binvasion\b|\boffensive\b|bombardement|\bbataille\b|massacre|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
+  /\bprovince\b|ville m[ée]tropolitaine|\bm[ée]tropole\b|communaut[ée]|\bcanton\b|arrondissement|\bd[ée]partement\b|unit[ée] urbaine|aire urbaine|intercommunalit[ée]|dioc[èe]se|g[ée]n[ée]ralit[ée]|universit[ée]|saint-si[èe]ge|ordre souverain|pr[ée]lature|convention|trait[ée] de\b|\baccord\b|conf[ée]rence|protocole|\bpacte\b|\bann[ée]e des\b|\bm[ée]tro\b|organisation|\bagence\b|\bfestival\b|biennale|\bchampionnat|jeux olympiques|\b[ée]lections?\b|\bconcours\b|\battaque\b|assassinat|attentat|\bop[ée]ration\b|\binvasion\b|\boffensive\b|bombardement|\bbataille\b|massacre|\bgare\b|gare routi[èe]re|a[ée]roport|\bpass\b|\bevjf\b|\bevg\b/i;
+
+// Mots de TYPE de lieu en tête d'un nom FORMEL (« basilique X », « stade X ») : sert
+// à fusionner ce nom avec le nom COMMUN « X » (même endroit, sources différentes).
+// Liste resserrée de types FORTS pour ne pas fusionner à tort (pas « place/rue/tour »).
+const PLACE_TYPE_PREFIX =
+  /^(?:basilique|cathedrale|eglise|chapelle|abbaye|monastere|musee|stade|chateau|palais|pont|theatre|opera|fontaine|halle|arenes|parc|jardin|fort) /;
 
 /**
  * Clé de dédoublonnage : minuscule, sans accents/ponctuation, sans le suffixe
  * désambiguïsant lié à la destination (« Cathédrale Saint-Pierre d'Annecy » ==
  * « Cathédrale Saint-Pierre », « Le Pâquier (Annecy) » == « Le Pâquier »).
  */
-function dedupKey(name: string, dest: string): string {
+export function dedupKey(name: string, dest: string): string {
   const norm = (s: string) =>
     s
       .toLowerCase()
@@ -56,13 +63,39 @@ function dedupKey(name: string, dest: string): string {
       .replace(/\([^)]*\)/g, " ")
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
-  const d = norm(dest);
+  // VILLE seule (avant la 1re virgule) : la destination est « Ville, Pays » depuis
+  // l'autocomplétion → sans ça, on chercherait « marseille france » en suffixe et
+  // « Vieux-Port DE MARSEILLE » ne fusionnerait jamais avec « Vieux Port ».
+  const d = norm(dest.split(",")[0]);
   let k = norm(name);
   if (d)
     k = k
       .replace(new RegExp(`(?:\\s(?:de|d|du|des|la|le|l))?\\s${d}$`), "")
       .trim();
   return k;
+}
+
+/**
+ * Deux clés de dédup désignent-elles le MÊME lieu (sources différentes) ? Trois
+ * cas, PRUDENTS (jamais fusionner deux lieux distincts) :
+ *  (1) préfixe de TYPE : « basilique X » == « X » (nom formel vs commun) ;
+ *  (2) suffixe de TYPE transport : « Grand Central » == « Grand Central Terminal » ;
+ *  (3) qualificatif de région : préfixe commun LONG (≥30) + suffixe COURT « de/du… »
+ *      (« Musée … » vs « … de l'Isère »), sans toucher « Saint-Pierre » vs « …-aux-Liens ».
+ */
+export function isNearDup(k1: string, k2: string): boolean {
+  const a = k1.length <= k2.length ? k1 : k2; // le plus court
+  const b = k1.length <= k2.length ? k2 : k1; // le plus long
+  const pref = b.match(PLACE_TYPE_PREFIX);
+  if (pref && b.slice(pref[0].length) === a) return true; // (1)
+  if (!b.startsWith(a + " ")) return false;
+  const suffix = b.slice(a.length + 1);
+  if (/^(terminal|station|gare|terminus)$/.test(suffix)) return true; // (2)
+  return (
+    a.length >= 30 && // (3)
+    suffix.length <= 14 &&
+    /^(de|du|des|de la|de l)\s/.test(suffix + " ")
+  );
 }
 
 /**
@@ -178,16 +211,7 @@ async function doFetchPlaceActivities(
       // sur frontière de mot) ET (2) que le suffixe ajouté soit COURT (≤ 14) et commence
       // par « de/du/des… » — un vrai qualificatif, pas un mot distinctif (« aux Liens »,
       // « Moderne », « et contemporain » ne commencent pas par « de » → jamais fusionnés).
-      const nearDup = seenKeys.some((s) => {
-        const a = k.length <= s.length ? k : s; // le plus court
-        const b = k.length <= s.length ? s : k; // le plus long
-        if (a.length < 30 || !b.startsWith(a + " ")) return false;
-        const suffix = b.slice(a.length + 1);
-        return (
-          suffix.length <= 14 && /^(de|du|des|de la|de l)\s/.test(suffix + " ")
-        );
-      });
-      if (nearDup) continue;
+      if (seenKeys.some((s) => isNearDup(k, s))) continue;
       seen.add(k);
       seenKeys.push(k);
       merged.push(p);
@@ -210,7 +234,25 @@ async function doFetchPlaceActivities(
     //   • Palier 2 : le reste (triés par `fame` = nb de Wikipédia).
     // ROBUSTESSE : un lieu majeur dont la récup de vues échoue (throttle) ne plonge pas
     // au milieu — il reste au pire en tête du palier 2. AUCUN bonus/malus chiffré.
-    const ranked = merged.filter(admissible).sort((a, b) => {
+    const candidates = merged.filter(admissible);
+
+    // TOP-UP des VUES par titre Wikipédia pour les candidats qui n'en ont pas encore
+    // (lieux Wikivoyage, ou Wikidata hors du top-40 sitelinks). Sans ça, des lieux
+    // MAJEURS (Rockefeller, MET, MoMA, Grand Central…) restaient à `views=undefined`
+    // → relégués au palier 2, SOUS des lieux mineurs qui, eux, avaient leurs vues.
+    // On donne ainsi à TOUS la même mesure de notoriété (vues FR réelles, 3 ans).
+    const needViews = candidates.filter((p) => p.views == null);
+    if (needViews.length > 0) {
+      const tv = await fetchTitleViews(
+        needViews.map((p) => p.wikiTitle || p.name),
+      );
+      for (const p of needViews) {
+        const v = tv.get(p.wikiTitle || p.name);
+        if (v && v > 0) p.views = v;
+      }
+    }
+
+    const ranked = candidates.sort((a, b) => {
       if (!!a.demote !== !!b.demote) return a.demote ? 1 : -1;
       const av = a.views != null;
       const bv = b.views != null;

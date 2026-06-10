@@ -140,3 +140,16 @@ export async function fetchPopularity(
   }
   return result;
 }
+
+/**
+ * Vues Wikipédia FR (3 ans) par TITRE d'article (≠ par Q-id). Sert à donner une
+ * notoriété RÉELLE aux lieux qu'un classement par Q-id rate : ceux sans Q-id
+ * exploitable (Wikivoyage) ou hors du pré-tri sitelinks de Wikidata. Sans ça, des
+ * lieux MAJEURS (Rockefeller, MET, MoMA…) restaient sans vues, donc relégués sous
+ * des lieux mineurs qui, eux, en avaient. Map { titre → vues }, dédupliquée.
+ */
+export async function fetchTitleViews(
+  titles: string[],
+): Promise<Map<string, number>> {
+  return wikiPageviews("fr", [...new Set(titles.filter(Boolean))]);
+}
