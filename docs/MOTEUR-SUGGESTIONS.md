@@ -201,11 +201,24 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
    Q4140840 (cf. Limite 2 & « Filtres & purges »).
 3. **Persister le cache des vues** en base (fix AlwaysData, cf. Limite 3).
 4. **HMS Belfast** : type « navire-musée » = lieu visitable (à ajouter au filtre).
-5. ~~Dédoublonnage~~ **PARTIEL** : dédup FLOUE des doublons « nom + qualificatif de
-   région » (Grenoble : musée de la Résistance « … » vs « … de l'Isère ») —
-   préfixe ≥ 30 car. + suffixe court « de/du/des… » (jamais de fusion à tort, ex.
-   Saint-Pierre vs Saint-Pierre-aux-Liens préservés). Reste : dédup par
-   COORDONNÉES pour les doublons à noms vraiment différents (chantier à part).
+5. ~~Dédoublonnage~~ **FAIT** : (a) suffixe destination retiré avec la VILLE seule
+   (dest « Ville, Pays ») ; (b) dédup floue par NOM — préfixe de type
+   (« basilique X »=« X »), suffixe transport (« Grand Central »=« … Terminal »),
+   qualificatif (« … de l'Isère ») ; (c) dédup par **COORDONNÉES** (< 110 m + mot
+   commun, « regarder les adresses ») pour les noms vraiment différents (« Musée
+   Solomon-R.-Guggenheim »=« Musée Guggenheim »). Helpers `dedupKey`/`isNearDup`/
+   `distanceMeters`/`shareToken` **testés** ; jamais de fusion à tort (Saint-Pierre
+   vs …-aux-Liens préservés).
+8. ~~**Lieux majeurs sans vues, coulés**~~ **FAIT** : les vues n'étaient prises que
+   pour le top-40 Wikidata (sitelinks) + jamais Wikivoyage → Rockefeller, MET, MoMA
+   sans vues, sous du bruit. `fetchTitleViews` (ranking) complète par TITRE pour tous
+   les candidats → notoriété réelle (Rockefeller 47ᵉ→20ᵉ, MET 42ᵉ→9ᵉ).
+9. ~~**Villes mono-thème tronquées**~~ **FAIT** : le plafond /catégorie (20) coupait
+   NYC (57 « Visite ») à ~28. `curate` en 2 passages (variété en tête PUIS comble
+   jusqu'à 50). Testé déterministiquement (top 20 inchangé → banc intact).
+10. ~~**Œuvres : MoMA vide + auto-référence**~~ **FAIT** : match `rdfs:label|skos:altLabel`
+   (« MoMA » = alias de « Museum of Modern Art ») → ses chefs-d'œuvre remontent (Van
+   Gogh, Dalí…) ; une œuvre dont le nom == le lieu est exclue (Statue de la Liberté).
 6. ~~Coder le **banc** en test Vitest~~ **FAIT** (`places.bench.test.ts`, `RUN_BENCH=1`).
 7. **Gares-monuments SANS le tag « site touristique »** (ex. St-Pancras Grade I,
    Gare de Lyon) : actuellement RÉTROGRADÉES à tort (soft, jamais supprimées). Les
