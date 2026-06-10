@@ -1,9 +1,13 @@
 /**
  * Notoriété TOURISTIQUE : vraies vues Wikipédia (≠ nombre de langues). C'est le
  * signal de classement de PREMIER RANG des suggestions — on mesure ce que les
- * gens CONSULTENT vraiment, sur 3 ans (lissage des pics d'actu/sport), en FR pur
- * (audience de l'app) avec l'EN en simple secours. 100 % données réelles ; un
- * échec de récup vaut `undefined` (≠ « 0 vue ») pour ne jamais déclasser à tort.
+ * gens CONSULTENT vraiment, sur 3 ans (lissage des pics d'actu/sport). Popularité
+ * GLOBALE = vues **FR + EN** : un Français à l'étranger doit voir les lieux
+ * mondialement iconiques (mémorial du 11-Septembre, musées/gratte-ciels mal lus en
+ * FR). Garde-fou anti-foot : les vues **FR PURES** sont renvoyées À PART pour que la
+ * décision « garder ce stade ? » se tranche sur le FR (intérêt touristique), pas sur
+ * l'EN gonflé par le foot mondial. 100 % données réelles ; un échec de récup vaut
+ * `undefined` (≠ « 0 vue ») pour ne jamais déclasser à tort.
  */
 import { fetchJson } from "./http";
 import { capMap } from "./cache";

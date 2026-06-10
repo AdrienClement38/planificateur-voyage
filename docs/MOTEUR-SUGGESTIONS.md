@@ -35,17 +35,21 @@ inventée** (jamais de note/prix/avis bidon — règle absolue).
 - **Vues Wikipédia réelles sur 3 ANS**, via l'API REST par article
   (`/metrics/pageviews/per-article/...`). Fenêtre LONGUE = lisse les pics
   actu/sport (sur 60 j, Wembley passait #1 devant Big Ben !).
-- **Vues FR PURES** quand l'article FR existe (audience de l'app = touristes
-  FRANÇAIS) ; l'EN ne sert que de SECOURS (réduit à l'échelle FR, ×0,1) pour les
-  lieux sans article FR. L'EN est gonflé par l'intérêt SPORTIF **mondial** (un
-  stade explose en EN via le foot) : on l'ignore quand on a du FR. C'est
-  l'audience FR — et non un malus — qui distingue le **stade-attraction** (Camp
-  Nou, que les Français visitent → vues FR réelles, reste #2 à Barcelone) du
-  **stade-pas-touristique** (Ullevaal à Oslo → vues FR faibles, tombe à #6).
+- **Vues FR + EN (popularité GLOBALE)** : un Français qui voyage à l'ÉTRANGER doit
+  voir les lieux mondialement/localement iconiques, pas seulement ceux lus en FR
+  (mémorial du 11-Septembre, musées étrangers, gratte-ciels). `fetchPopularity`
+  renvoie `{ total = FR+EN, fr }`.
+- ⚠ **Anti-foot** : l'EN est gonflé par le foot mondial → on garde `fr` À PART. La
+  décision « garder ce stade ? » (cf. demote) se tranche sur les **vues FR PURES**
+  (intérêt TOURISTIQUE), JAMAIS sur le total → un stade-foot moderne (Karaïskákis,
+  OAKA) ne remonte pas via ses vues EN. **C'est ce qui rend le multi-langues SÛR.**
+  *Histoire :* on était d'abord en **FR pur** (robuste, mais Oslo sous-classait
+  Munch/Fram sous les stades & NYC ratait le mémorial). Le **FR+EN + demote-sur-FR**
+  règle Oslo (Munch remonte 4ᵉ) sans réinjecter le foot (banc 9/9).
 - Repli sitelinks si pas de vues. **Aucun bonus/malus bidouillé** (règle posée
   par Adrien : tri par notoriété pure).
-- Sondé sur le **top-40 candidats** + **concurrence 16** + **cache 14 j** (sinon
-  ~100 appels REST = 35 s). Voir « Limites ».
+- Sondé sur le **top-40 candidats**, **FR ET EN en parallèle**, **concurrence 16** +
+  **cache 14 j**. Voir « Limites ».
 
 ## Filtres & purges (ce qui ne doit JAMAIS sortir en liste, et ce qui reste)
 
@@ -98,8 +102,8 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
   « Filtres & purges ».)*
 - **Récup des vues fiabilisée** : réessais avec **back-off** (l'API REST throttle
   vite en rafale), un échec = `null` (**≠ « 0 vue »**, non mis en cache),
-  **concurrence 6** (＞ fiable que 16), **EN sondé seulement en secours** (lieux
-  sans vue FR) ⇒ ~2× moins d'appels REST, donc moins de throttle.
+  **concurrence 6** (＞ fiable que 16). **FR et EN sondés en PARALLÈLE** (popularité
+  GLOBALE = FR+EN) ; le **cache 14 j** + la pré-chauffe absorbent le surcoût d'appels.
 - **Purge « œuvre perdue » ISOLÉE** : la purge des œuvres disparues (Q4140840,
   Athéna Parthénos…) tourne en **requête SÉPARÉE, en parallèle** de la purge lourde
   (rivières/communes/œuvre-dans-édifice). Un seul `P31/P279*` → réponse <1 s, donc
@@ -118,8 +122,9 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
 
 ## Limites connues (à traiter)
 
-1. ~~Oslo sous-classé~~ **RÉSOLU** : (a) tri sur **vues FR pures** (`97a8a36`) →
-   opéra/Munch/palais remontent ; (b) **musées réintégrés** (Q33506 dans l'allow-list)
+1. ~~Oslo sous-classé~~ **RÉSOLU** : (a) tri sur **vues réelles FR+EN**, décision
+   stade tranchée sur **FR pur** (`b9c8b82`) → opéra/Munch/palais remontent (Munch 4ᵉ)
+   SANS réinjecter le foot ; (b) **musées réintégrés** (Q33506 dans l'allow-list)
    + **stades locaux rétrogradés** (`27467f2`) → Ullevaal/Bislett/Holmenkollbakken
    partent, musées du Fram/navires vikings remontent. Voir « Tri » & « Filtres ».
    - **Arbitrage produit (PAS un bug) — stades célèbres** : le **stade de Wembley**
@@ -132,10 +137,14 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
      Aucun correctif par les vues ne corrige ça (cf. ci-dessous). À trancher avec
      Adrien : accepter (honnête) ou poser un signal « fonction = sport vs culture »
      (mais ça toucherait aussi Camp Nou, que l'on veut garder haut).
-   - **Multi-langues testé et ÉCARTÉ** : sommer FR+EN+ES+IT+DE+ZH **ré-injecte du
-     foot** (Liga, Serie A, Bundesliga) → à Oslo le stade **remonte** #4 → #3 et
-     tout se **tasse** (~290k, 4 % d'écart) = classement fragile. Le **FR pur**
-     reste le meilleur séparateur stade-attraction / stade-pas-touristique.
+   - **Multi-langues (FR+EN) ADOPTÉ** (`b9c8b82`) : un Français à l'ÉTRANGER doit voir
+     les lieux mondialement/localement iconiques (mémorial du 11-Septembre, musées
+     étrangers, gratte-ciels) mal lus en FR. La somme FR+EN les remonte. **L'anti-foot
+     tient** parce que la décision « garder ce stade ? » reste sur le **FR pur** (cf.
+     « Tri ») : l'EN gonflé par le foot ne sert qu'à classer, jamais à *garder* un stade.
+     ⚠ Garde-fou écarté **avant** ce design : sommer 6 langues (FR+EN+ES+IT+DE+ZH) SANS
+     la séparation stade-sur-FR ré-injectait le foot (Oslo #4→#3, écart 4 %). La clé
+     n'est donc pas « peu de langues » mais **trancher les stades sur le FR**.
 2. ~~**Athènes — Athéna Parthénos**~~ **RÉSOLU** : la statue de Phidias (Q2070605,
    détruite dans l'Antiquité) sortait #3. Elle passe le filtre « lieu » car *statue
    colossale* → *statue* → *structure architecturale* (Q811979) ; et son P276 =
@@ -224,8 +233,15 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
    Gare de Lyon) : actuellement RÉTROGRADÉES à tort (soft, jamais supprimées). Les
    remonter via un patrimoine FORT, sans réintroduire le piège de l'« Inventaire
    général » (Q16739336, fourre-tout de 21k entités) ni de logique franco-centrée.
-7. (Abandonné) ~~Vues en langue locale~~ : rejeté (les locaux suivent le foot) ;
-   ~~multi-langues~~ : testé, ré-injecte le foot. Le **FR pur** est la réponse.
+11. ~~**Multi-langues (FR+EN)**~~ **FAIT** (`b9c8b82`) : popularité GLOBALE = vues FR+EN
+   (lieux iconiques à l'étranger : mémorial du 11-Septembre, musées/gratte-ciels mal lus
+   en FR). L'anti-foot tient car la décision stade reste sur le **FR pur**. *Reste* :
+   ~~vues en langue LOCALE~~ écartées (les locaux suivent le foot → ré-injection) — le
+   FR+EN-avec-stade-sur-FR couvre déjà Oslo/Athènes sans ce risque.
+8. **Mémorial du 11-Septembre (NYC) absent** : problème de SÉLECTION, pas de tri — le
+   musée est coupé au pré-tri sitelinks (`out` plafonné à 55) AVANT le classement par
+   vues. Élargir le vivier coûte ~30 s (rejeté : « pas trop lourde »). À rouvrir avec
+   un cache de vues persistant (point 3) qui amortirait un vivier plus large.
 
 ## Commits clés de la session (branche `feat/refonte-dashboard`)
 
@@ -255,3 +271,5 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - *(banc)* `places.bench.test.ts` : armure anti-régression (8 villes, `RUN_BENCH=1`)
 - `91d1f30` plafond des sommets (Chamonix : le train du Montenvers remonte #35→#10)
 - `c339730` dédup floue « nom + qualificatif de région » (doublon musée Grenoble)
+- `b9c8b82` popularité GLOBALE (vues FR+EN) + décision stade sur vues FR (Oslo : Munch
+  remonte 4ᵉ, NYC mieux couvert, foot toujours enterré — banc 9/9)
