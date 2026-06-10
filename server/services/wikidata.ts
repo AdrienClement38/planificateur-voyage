@@ -269,10 +269,10 @@ export async function discoverWikidata(
   // nombre d'appels REST. Le reste garde son rang sitelinks (queue de liste).
   const popularity = await fetchPopularity(outIds.slice(0, 40));
   out.forEach((p, i) => {
-    const views = popularity.get(outIds[i]);
-    if (views && views > 0) {
-      p.fame = views; // pour l'admissibilité (≥8) et l'affichage
-      p.views = views; // signal de 1er rang, distinct de fame (cf. tri final)
+    const pop = popularity.get(outIds[i]);
+    if (pop && pop.total > 0) {
+      p.fame = pop.total; // pour l'admissibilité (≥8) et l'affichage
+      p.views = pop.total; // notoriété GLOBALE (FR+EN) — signal de 1er rang
     }
   });
   // STADES : on ne garde QUE le PLUS consulté de la ville (l'iconique), et seulement
@@ -285,12 +285,17 @@ export async function discoverWikidata(
   const sportIdx = outIds
     .map((id, i) => i)
     .filter((i) => demote.sports.has(outIds[i]));
+  // Décision STADE sur les vues FR PURES (≠ total FR+EN) : l'EN est gonflé par le foot
+  // mondial. On garde le stade le plus consulté EN FRANÇAIS (= intérêt touristique) et
+  // seulement s'il passe le plancher FR — sinon un stade-foot moderne (Karaïskákis,
+  // OAKA…) remonterait via ses seules vues EN. C'est ce qui rend le multi-langues SÛR.
+  const frV = (i: number) => popularity.get(outIds[i])?.fr ?? 0;
   let topI = -1;
   for (const i of sportIdx) {
-    if (topI < 0 || (out[i].views ?? 0) > (out[topI].views ?? 0)) topI = i;
+    if (topI < 0 || frV(i) > frV(topI)) topI = i;
   }
   for (const i of sportIdx) {
-    const keep = i === topI && (out[i].views ?? 0) >= STADIUM_VIEWS_MIN;
+    const keep = i === topI && frV(i) >= STADIUM_VIEWS_MIN;
     if (!keep) out[i].demote = true;
   }
   // SOMMETS : on garde les SUMMIT_KEEP plus consultés de la ville (Mont Blanc,

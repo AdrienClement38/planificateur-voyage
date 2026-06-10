@@ -78,15 +78,20 @@ async function wikiPageviews(
 }
 
 /**
- * Pour des Q-ids, somme des vues Wikipédia FR + EN via les titres CANONIQUES des
- * sitelinks (zéro redirection). Signal de notoriété réelle : ce que les gens
- * consultent vraiment — contrairement au nombre de langues, qui sur-classe
- * communes/rivières/chaînes. Tolérant à l'échec (Map partielle → repli sitelinks).
+ * Pour des Q-ids, vues Wikipédia via les titres CANONIQUES des sitelinks (zéro
+ * redirection). Renvoie pour chaque lieu `{ total, fr }` :
+ *  - `total` = FR + EN = popularité GLOBALE (un Français à l'étranger doit voir les
+ *    lieux mondialement iconiques, pas seulement ceux lus en français : mémorial du
+ *    11-Septembre, gratte-ciels, musées étrangers…) ;
+ *  - `fr` = vues FR PURES, gardées à part pour la décision « garder ce stade ? » :
+ *    l'EN est gonflé par le foot mondial, donc on tranche les stades sur le FR
+ *    (intérêt TOURISTIQUE), pas sur le total (cf. `discoverWikidata`).
+ * Tolérant à l'échec (Map partielle → repli sitelinks).
  */
 export async function fetchPopularity(
   qids: string[],
-): Promise<Map<string, number>> {
-  const result = new Map<string, number>();
+): Promise<Map<string, { total: number; fr: number }>> {
+  const result = new Map<string, { total: number; fr: number }>();
   if (qids.length === 0) return result;
   const values = qids.map((q) => `wd:${q}`).join(" ");
   const sparql =
@@ -111,32 +116,21 @@ export async function fetchPopularity(
     if (b.frTitle?.value) frOf.set(qid, b.frTitle.value);
     if (b.enTitle?.value) enOf.set(qid, b.enTitle.value);
   }
-  // 1) Vues FR pour tous (signal PRINCIPAL = audience française de l'app).
-  const frViews = await wikiPageviews("fr", [...new Set(frOf.values())]);
-  // 2) EN UNIQUEMENT en secours : on ne sonde EN que pour les lieux SANS vue FR
-  //    exploitable (pas d'article FR, ou récup FR échouée). → 2× moins d'appels
-  //    REST dans le cas courant : moins de throttle, donc plus robuste ET rapide.
-  const needEn = qids.filter((qid) => {
-    const t = frOf.get(qid);
-    const fv = t ? frViews.get(t) : undefined;
-    return (fv === undefined || fv <= 0) && enOf.has(qid);
-  });
-  const enViews = await wikiPageviews("en", [
-    ...new Set(needEn.map((qid) => enOf.get(qid)!)),
+  // Vues FR ET EN pour TOUS, EN PARALLÈLE. La somme = popularité GLOBALE : l'EN capte
+  // les lieux mondialement/localement iconiques mal lus en FR (mémorial du 11-Septembre,
+  // gratte-ciels, musées étrangers). Le foot (gonflé en EN) est neutralisé EN AVAL : les
+  // STADES sont tranchés sur les vues FR (`fr` renvoyé à part), pas sur le total.
+  const [frViews, enViews] = await Promise.all([
+    wikiPageviews("fr", [...new Set(frOf.values())]),
+    wikiPageviews("en", [...new Set(enOf.values())]),
   ]);
   for (const qid of qids) {
     const frT = frOf.get(qid);
-    const fr = frT ? frViews.get(frT) : undefined; // undefined = pas d'article OU échec
+    const fr = (frT ? frViews.get(frT) : undefined) ?? 0;
     const enT = enOf.get(qid);
-    const en = enT ? enViews.get(enT) : undefined;
-    // Audience = touristes FRANÇAIS → on classe sur les vues FR PURES (ce que les
-    // Français consultent : opéra, musée, château…). L'EN est gonflé par l'intérêt
-    // MONDIAL du sport (un stade explose en EN via le foot) : on l'IGNORE quand un
-    // article FR existe, et on ne l'utilise (réduit à l'échelle FR, ×0,1) qu'en
-    // SECOURS pour les lieux sans article FR. Pas un « bonus » : on pondère par
-    // l'audience réelle de l'app.
-    const v = fr && fr > 0 ? fr : en && en > 0 ? en * 0.1 : 0;
-    if (v > 0) result.set(qid, v);
+    const en = (enT ? enViews.get(enT) : undefined) ?? 0;
+    const total = fr + en;
+    if (total > 0) result.set(qid, { total, fr });
   }
   return result;
 }
