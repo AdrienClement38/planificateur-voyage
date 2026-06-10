@@ -93,7 +93,9 @@ async function highlightsChunk(
   const sparql =
     `SELECT DISTINCT ?lbl ?artLabel ?img ?sl WHERE {` +
     `VALUES ?lbl { ${vals} }` +
-    `?place rdfs:label ?lbl.` +
+    // label OU alias : « MoMA » est un ALIAS de « Museum of Modern Art » (Q188740) ;
+    // sans les alias, les noms communs/acronymes ne résolvent pas l'entité → 0 œuvre.
+    `?place rdfs:label|skos:altLabel ?lbl.` +
     // Œuvre rattachée au lieu : emplacement (P276), collection (P195) — y compris
     // une SOUS-collection « partie de » l'institution (P361*, ex. La Joconde dont
     // la collection est le « département des peintures » du Louvre) — OU via une
