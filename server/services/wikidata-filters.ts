@@ -64,33 +64,41 @@ const WD_PLACE_TYPES = [
 
 /**
  * Filtre CRITIQUE : sous-ensemble des Q-ids qui SONT des lieux (sous-classe d'un
- * super-type « lieu »). Léger (allow-list seule) pour rester fiable. Renvoie
- * `null` en cas d'ÉCHEC réseau (≠ Set vide = « aucun lieu ») afin que l'appelant
- * échoue SÛR (Wikidata vide) au lieu de laisser tout passer (fail-open).
+ * super-type « lieu »). Léger (allow-list seule) pour rester fiable. Robustesse PAR LOT :
+ * un lot qui échoue (throttle) garde SES candidats tels quels (on ne perd aucun vrai lieu,
+ * et la fuite éventuelle de non-lieux — événements, institutions — est LIMITÉE à ce lot).
+ * Ne renvoie `null` (→ l'appelant garde tout) que si TOUS les lots échouent (réseau mort).
  */
 export async function wikidataPlaceFilter(
   qids: string[],
 ): Promise<Set<string> | null> {
   if (qids.length === 0) return new Set();
-  // Découpe en lots de 100 : une requête P279* sur 100 items est bien plus rapide
-  // (et bien moins sujette au timeout) que sur 220. Lots en PARALLÈLE → même temps
-  // mural, mais chacun fiable. Si UN lot échoue franchement → échec global (null).
+  // Découpe en lots de 100 : une requête P279* sur 100 items est bien plus rapide (et
+  // bien moins sujette au timeout) que sur 400. Lots en PARALLÈLE → même temps mural.
   const chunks: string[][] = [];
   for (let i = 0; i < qids.length; i += 100)
     chunks.push(qids.slice(i, i + 100));
-  const results = await Promise.all(
-    chunks.map((c) => {
+  const keep = new Set<string>();
+  let anySuccess = false;
+  await Promise.all(
+    chunks.map(async (c) => {
       const values = c.map((q) => `wd:${q}`).join(" ");
       const sparql =
         `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
         `?item wdt:P31/wdt:P279* ?s. VALUES ?s { ${WD_PLACE_TYPES.join(" ")} } }`;
-      return sparqlItemSet(sparql, 12000);
+      const r = await sparqlItemSet(sparql, 12000);
+      if (r === null) {
+        // Lot échoué : on GARDE ses candidats (impossible de vérifier, mais on ne perd
+        // pas de vrai lieu). AVANT, un seul lot en échec désactivait le filtre pour TOUT
+        // → des non-lieux (émeute « Journée des Tuiles », académie…) remontaient en masse.
+        for (const id of c) keep.add(id);
+      } else {
+        anySuccess = true;
+        for (const id of r) keep.add(id);
+      }
     }),
   );
-  if (results.some((r) => r === null)) return null;
-  const set = new Set<string>();
-  for (const r of results) for (const id of r!) set.add(id);
-  return set;
+  return anySuccess ? keep : null;
 }
 
 /**
@@ -108,13 +116,15 @@ export async function wikidataPlaceFilter(
 export async function wikidataPurge(qids: string[]): Promise<Set<string>> {
   if (qids.length === 0) return new Set();
   const values = qids.map((q) => `wd:${q}`).join(" ");
-  // (1) PLANS D'EAU & reliefs & sites industriels : cours d'eau (Q355304), ESTUAIRE
-  // (Q47053) & DÉTROIT (Q37901) — l'East River est un estuaire, PAS une rivière —,
-  // chaîne/massif (Q46831), centrale électrique (Q159719, dont les NUCLÉAIRES
-  // Tricastin/Cruas ; les BARRAGES Q12323 ne sont PAS des centrales → conservés).
+  // (1) INFRASTRUCTURES LINÉAIRES, reliefs & sites industriels — non visitables : cours
+  // d'eau (Q355304), ESTUAIRE (Q47053) & DÉTROIT (Q37901) — l'East River est un estuaire,
+  // PAS une rivière —, chaîne/massif (Q46831), centrale électrique (Q159719, dont les
+  // NUCLÉAIRES Tricastin/Cruas ; les BARRAGES Q12323 ne sont PAS des centrales → gardés),
+  // et LIGNE FERROVIAIRE (Q728937, dont les LGV) : une ligne de centaines de km n'est pas
+  // une sortie — la GARE, elle, reste gérée à part par le demote « transit ».
   const waterLand =
     `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
-    `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q47053 wd:Q37901 wd:Q46831 wd:Q159719 } }`;
+    `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q47053 wd:Q37901 wd:Q46831 wd:Q159719 wd:Q728937 } }`;
   // (2) ZONES ADMINISTRATIVES trop larges : commune SÉPARÉE (Q486972 hors quartier
   // Q123705/Q2983893 → vire Jersey City/Hoboken, garde Greenwich Village/Montmartre) ET
   // COMTÉ (Q28575), qui capte les arrondissements « consolidated city-county » (Manhattan,

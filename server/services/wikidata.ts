@@ -42,6 +42,10 @@ const WD_BAD_TYPES = new Set([
   "Q5",
   "Q1656682",
   "Q1190554",
+  // émeute / révolte (Q124757 : « Journée des Tuiles » à Grenoble) — sous-classe
+  // d'événement non captée par l'exact-match des supertypes, et que le filtre « lieu »
+  // laisse parfois passer sous charge → exclue d'office ici (type déjà en mémoire, 0 réseau).
+  "Q124757",
   "Q13418847",
   "Q178561",
   "Q198",
@@ -205,11 +209,13 @@ export async function discoverWikidata(
   lon: number,
   destination: string,
 ): Promise<PlaceActivity[]> {
-  // Source PRINCIPALE des suggestions : rayon LARGE (20 km) pour capter les
-  // monuments des alentours (Versailles, Bygdøy…), seuil ≥10 langues pour
-  // descendre jusqu'aux musées notables. Le tri par sitelinks garde les plus
-  // connus en tête ; le cache 6 h absorbe la latence variable de Wikidata.
-  const byId = await wikidataAround(lat, lon, 14, 20);
+  // Source PRINCIPALE des suggestions : rayon LARGE (20 km) pour capter les monuments
+  // des alentours (Versailles, Bygdøy…). Seuil BAS (≥8 langues) : dans les villes DENSES
+  // le LIMIT 500 ne garde de toute façon que les plus connus, mais dans les PETITES villes
+  // ça laisse remonter les ICÔNES LOCALES peu multilingues (la Bastille de Grenoble = 8
+  // langues, sinon coupée à l'entrée !). Tri par sitelinks ; le cache de vues persistant
+  // absorbe la latence du vivier élargi.
+  const byId = await wikidataAround(lat, lon, 8, 20);
   if (byId.size === 0) return [];
 
   const destLow = destination.toLowerCase().split(/[,(]/)[0].trim();
