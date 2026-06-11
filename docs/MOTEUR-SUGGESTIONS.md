@@ -20,8 +20,12 @@ inventée** (jamais de note/prix/avis bidon — règle absolue).
 ## Sources (toutes gratuites/ouvertes)
 
 - **Wikidata** (SPARQL `wikibase:around`) = source PRINCIPALE. Rayon **20 km**
-  (capte les alentours : Versailles, Bygdøy…), seuil ≥14 langues, `LIMIT 500`
-  (sinon mégapoles bridées car les top-sitelinks sont des non-lieux).
+  (capte les alentours : Versailles, Bygdøy…), **seuil ≥8 langues**, `LIMIT 500`
+  (sinon mégapoles bridées car les top-sitelinks sont des non-lieux). ⚠ Le seuil
+  langues est un **garde-fou de VOLUME, PAS un critère de tri** : on classe par VUES
+  (cf. « Tri »). Abaissé de 14 → **8** (`e16e144`) pour faire remonter les icônes
+  **RÉGIONALES** et des pays peu couverts par Wikidata, ensuite mesurées par leurs
+  vraies vues : Bastille de Grenoble (8 langues), Majorelle & Koutoubia à Marrakech.
 - **OpenStreetMap** (Overpass, multi-miroir), **Wikivoyage** (`{{voir}}/{{faire}}`),
   **Wikipédia** (geosearch) = en SECOURS / complément (Wikipédia ramène des
   institutions, donc reléguée aux petites villes / fallback).
@@ -67,10 +71,19 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
 | Supermarchés (Carrefour) | chaîne Q507619/Q18043413 | Grands magasins (Galeries Lafayette) |
 | Œuvres en standalone (Le Cri, La Pietà) | groupe-de-peintures Q18573970 + page d'homonymie Q4167410 en bad-types ; **œuvre (sculpture/peinture) DANS un édifice** (P276 → musée/église/palais) en purge | Statues **extérieures** (Manneken-Pis, Statue de la Liberté) |
 | Œuvres **disparues/détruites** (Athéna Parthénos, Promachos, Lemnia) | **« œuvre d'art perdue » Q4140840** (P31/P279*) en purge — l'original n'existe plus, mais reste géotaggé sur l'Acropole et bien classé (sitelinks ≥17) | Statues **extérieures existantes** (Liberté, Manneken-Pis) ; **sites archéologiques** (Agora, Aréopage) — aucun n'est une « œuvre perdue » |
-| Événements (conclave, Journée des Tuiles) | bad-types + NOISE_BLOCK | — |
+| Événements / émeutes (conclave, **Journée des Tuiles**) | bad-types (émeute Q124757) + NOISE_BLOCK ; **+ la source de secours Wikipédia est filtrée par le VRAI filtre lieu** (résolution du Q-id de chaque article → place-filter, `e16e144`) : la regex seule ratait ces non-lieux (émeute, académie, institution) | — |
 | Bateaux-objets (Fram) | exclus du filtre lieu | Bateaux-LIEUX (HMS Belfast) — *à ajouter, cf. Reste à faire* |
 | Gares-transit UTILITAIRES (Saint-Charles, aéroports, Penn Station) — **RÉTROGRADÉES, pas supprimées** | transport P31/P279* (gare Q55488, métro Q928830, gare routière Q494829, aéroport Q1248784) SANS le tag **« site touristique » Q570116 en P31 DIRECT** → drapeau `demote` → tout en bas du tri (`wikidataClassifyDemote`). Règle GÉNÉRALE & MONDIALE, langue-agnostique | **Gares-MONUMENTS** marquées site touristique (Grand Central) |
-| Stades en 2ᵉ rang / locaux (Lluís-Companys, Emirates, Ullevaal, Karaïskákis…) — **RÉTROGRADÉS** | enceinte sportive P31/P279* (stade Q483110 / sports venue Q1076486 / arène Q641226) NON « site touristique » : on ne garde que **LE stade le plus consulté de la ville** (≥ `STADIUM_VIEWS_MIN` = 100k), les autres tombent. Un seuil ABSOLU échoue (Lluís-Companys 307k > Old Trafford 122k) → règle « top de la ville + plancher » | **LE stade iconique de chaque ville** (Camp Nou, Wembley, Vélodrome, Stade de France, Old Trafford/Anfield…) ; **panathénaïque** (antique, via tag « site touristique ») |
+| Stades 2ᵉ rang / locaux **+ RÉGIONAUX** (Lluís-Companys, Emirates, Ullevaal, Chaban-Delmas, Old Trafford…) — **RÉTROGRADÉS** | enceinte sportive P31/P279* (stade Q483110 / sports venue Q1076486 / arène Q641226) NON « site touristique » : on ne garde que **LE stade le plus consulté de la ville** ET **≥ `STADIUM_VIEWS_MIN` = 250k vues FR** (`dc1cb78`, relevé de 100k). Un seuil ABSOLU seul échoue (Lluís-Companys 307k n'est pas le top de Barcelone) → règle « **top de la ville ET plancher** ». Le plancher 250k ne laisse que les stades **MONDIAUX** ; les régionaux tombent (Chaban-Delmas 166k → plus #1 à Bordeaux, Old Trafford 122k, Anfield 127k, Matmut 152k) | **LE stade MONDIALEMENT iconique** (Camp Nou 513k, Wembley 339k, Vélodrome 520k, Stade de France) ; **panathénaïque** (antique, via tag « site touristique ») |
+| **Quartiers** résidentiels en EXCÈS (Broadway, Greenwich Village, Upper West Side…) — **RÉTROGRADÉS** | quartier Q123705/Q2983893 (P31/P279*) → drapeau `demote` (`wikidataClassifyDemote`, branche `hoods`), SAUF « site touristique » DIRECT (Times Square) ou plage Q40080 (Coney Island). Évite que les ZONES noient les SITES précis | **Quartiers-destinations** (Times Square, Coney Island ; Montmartre/Trastevere restent par leurs vues) |
+| **Infra / labo** non-touristique (digue **MOSE**, institut de recherche **IRAM**) — **RÉTROGRADÉS** | branche `infra` (`4640b82`) : flood barrier Q24853940 / institut de recherche Q31855 (P31/P279*), SAUF musée Q33506 ou « site touristique » Q570116. ⚠ PAS « port maritime » Q15310171 (même type que le **Vieux-Port** touristique → aucun signal propre, on laisse) | Un institut/musée qui se VISITE (épargné par le garde-fou) ; le Vieux-Port |
+
+> **Dédup « même article »** (`eef49e9`, dans `places.ts` après le tri) : deux entrées
+> aux **vues IDENTIQUES non nulles** et à **< 200 m** sont le MÊME lieu sous deux noms —
+> translittération (« Jemaa el-Fna » / « Place Jamaâ el-fna »), synonyme (« Olympiéion » /
+> « Temple de Zeus ») — qui tirent leurs vues du MÊME article Wikipédia, d'où l'égalité
+> EXACTE (deux lieux DISTINCTS n'ont jamais exactement les mêmes vues sur 3 ans). On garde
+> la 1ʳᵉ (tri stable). Rattrape ce que la dédup par nom/token laisse passer (cf. plus bas).
 
 ## « Œuvres à voir » (volet sur les cartes)
 
@@ -118,7 +131,10 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
   fire-and-forget. Quand l'user ouvre Suggestions, c'est chaud → quasi instantané.
 - **Déduplication des fetchs en cours** (`inFlight`) : la pré-chauffe et
   l'ouverture des suggestions partagent la même promesse.
-- Cache résultats 6 h (15 min si dégradé) + cache des vues 14 j.
+- Cache résultats 6 h (15 min si dégradé) + **cache des vues PERSISTANT sur disque**
+  (`data/.cache/pv.json`, `caa3899`) : écriture **atomique** (tmp + rename), survit aux
+  **redémarrages** → un vivier large reste rapide. Flush propre à l'arrêt (cf. « DB
+  sécurisée »). En prod avec DB distante, le chemin fichier est désactivé (cache mémoire).
 
 ## Limites connues (à traiter)
 
@@ -153,11 +169,24 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
    (Q4140840)** — vire aussi Athéna Promachos (Q755221) & Lemnia (Q950701), mêmes
    colosses perdus, **sans toucher** statues existantes ni sites archéologiques
    (vérifié : aucun n'est sous-classe de Q4140840). Voir « Filtres & purges ».
-3. **Latence à froid ~10-27 s** (API vues par-article + throttle). Mitigée par la
-   pré-chauffe + le cache, mais **cache EN MÉMOIRE → perdu au redémarrage**
-   (problème sur AlwaysData). **Fix durable = persister les vues en base.**
+3. ~~**Latence à froid + cache perdu au redémarrage**~~ **RÉSOLU** (`caa3899`) : le cache
+   des vues est désormais **PERSISTANT** (`data/.cache/pv.json`, écriture atomique tmp +
+   rename, flush à l'arrêt propre). Survit aux redémarrages → pré-chauffe + ce cache
+   absorbent la latence à froid, ce qui a aussi permis d'**élargir le vivier** (cf. point 8
+   : le mémorial du 11-Septembre remonte). *(En prod AlwaysData, cache fichier désactivé si
+   DB distante ; un cache en base serait l'étape suivante si besoin.)*
 4. Vénus de Milo échappe à la purge « œuvre dans édifice » (sa salle n'est pas
    taguée comme bâtiment) — mineur, sans risque.
+5. **Lieux « célèbres mais pas une sortie » — arbitrage ASSUMÉ (pas un bug)** : certains
+   lieux très consultés ne sont pas des visites idéales — prison (Rikers), île abandonnée
+   (Poveglia), stade lointain (MetLife, New Jersey), port de COMMERCE, domaines viticoles
+   (Romanée-Conti, Pessac-Léognan). Ils montent par leur **vraie notoriété** (vues). On a
+   démoté ceux qui ont un **type propre** non-touristique (infra/labo — digue, institut ;
+   cf. Filtres) ; les autres sont **GARDÉS par CHOIX** car **aucun type ne les isole sans
+   casser des légitimes** : filtrer « prison » tue Alcatraz, « île » tue Burano, « domaine
+   viticole » tue l'œnotourisme, « port maritime » tue le Vieux-Port (même type Q15310171
+   que le port de commerce). **Principe : corriger par TYPE / seuil / vues, JAMAIS par
+   nom ; les `notContain` du banc sont des fils-pièges anti-régression, pas la logique.**
 
 ## Banc de test (vérité terrain) — **CODÉ** ✅
 
@@ -165,8 +194,13 @@ Implémenté dans **`server/services/places.bench.test.ts`** : appelle le VRAI m
 en ligne par ville et vérifie DOIT / NE DOIT PAS (top 15). **Exclu de la CI** (réseau
 = flaky) ; à lancer À LA MAIN avant tout changement du moteur :
 `RUN_BENCH=1 npx vitest run server/services/places.bench.test.ts` (PowerShell :
-`$env:RUN_BENCH=1; npx vitest run …`). 7 villes couvertes (Rome, Oslo, Barcelone,
-Londres, Athènes, Marseille, Paris) — à enrichir au fil de l'eau.
+`$env:RUN_BENCH=1; npx vitest run …`). **15 villes** couvertes (Rome, Oslo, Barcelone,
+Londres, Athènes, Marseille, Paris, Chamonix, Viviers, New York, Grenoble, Marrakech,
+Bordeaux, Dijon, Venise) — tailles & pays VARIÉS. Assertions `contain`/`notContain`
+(top 15) **+ `containAll`/`notContainAll`** (liste ENTIÈRE, invariants plus stricts).
+⚠ **Throttle-flaky** : 1-2 villes peuvent FAUX-échouer en rafale (API vues saturée, une
+icône retombe à 0 vue) → re-lancer la ville seule au calme (`-t Ville`, vues en cache)
+confirme. Un run propre = **15/15**.
 
 Règles GLOBALES (toutes villes) : tri par vues (pas sitelinks, pas de bonus) ;
 liens « Voir le lieu » → tous Google Maps ; zéro donnée inventée ; photos réelles ;
@@ -187,19 +221,31 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - **Londres** : Big Ben, Buckingham, **stade de Wembley** (légitimement haut :
   339k vues FR), tour de Londres, Tower Bridge, Westminster, British Museum, London
   Eye, **HMS Belfast** *(à faire apparaître)*.
-- **Grenoble** : **fort de la Bastille**, **téléphérique (les Bulles)**, musée de
-  Grenoble / Journée des Tuiles (événement).
+- **Grenoble** (petite ville FR, valide le **seuil ≥8**) : **la Bastille** (8 langues,
+  remonte), musée de Grenoble, téléphérique / **Journée des Tuiles** (émeute) & **Académie**
+  (non-lieux de la source Wikipédia, désormais filtrés par le filtre lieu) ; **IRAM**
+  (institut de recherche → infra-démote).
 - **Lyon** : Fourvière, place Bellecour, Vieux Lyon, musée des Beaux-Arts.
 - **Marseille** : **stade Vélodrome** (icône, GARDÉ #1), Bonne Mère, château d'If,
   Calanques, Vieux-Port / **Marseille-Saint-Charles & Aix-TGV** (gares-transit →
   RÉTROGRADÉES, hors page 1).
-- **New York** : Liberté, Empire State, Central Park / **Penn Station, aéroports
-  LaGuardia & Newark** (transit → rétrogradés) ; **Grand Central GARDÉ** (gare-
-  monument « site touristique »).
+- **New York** : Liberté, Empire State, **World Trade Center**, Central Park ; **mémorial
+  du 11-Septembre** présent (vivier élargi + cache, cf. Limite 3/8) / **Penn Station,
+  aéroports LaGuardia & Newark** (transit → rétrogradés) ; **Broadway, Greenwich Village**
+  (quartiers → rétrogradés) ; **Jersey City, Hoboken, Hudson, East River** (zones larges →
+  purgées, liste ENTIÈRE) ; **Grand Central GARDÉ** (gare-monument « site touristique »).
 - **Athènes** : Parthénon, Acropole, Érechthéion, Agora, Aréopage, Olympiéion (le
-  stade **panathénaïque** est un MONUMENT, doit rester) / **Athéna Parthénos,
-  Promachos, Lemnia** (statues antiques DÉTRUITES = « œuvre d'art perdue », ne
-  doivent PAS sortir).
+  stade **panathénaïque** est un MONUMENT, doit rester ; **« Temple de Zeus » = doublon
+  d'Olympiéion → dédupliqué**) / **Athéna Parthénos, Promachos, Lemnia** (statues
+  antiques DÉTRUITES = « œuvre d'art perdue », ne doivent PAS sortir).
+- **Marrakech** (Maroc, pays peu couvert) : **Majorelle, Koutoubia, Jemaa el-Fna** mesurés
+  par leurs VRAIES vues (jadis Koutoubia 1 vue, coupée par le seuil 14) ; le doublon
+  « Place Jamaâ el-fna » est dédupliqué.
+- **Bordeaux** : cathédrale Saint-André, place de la Bourse, **Cité du Vin** / **stade
+  Chaban-Delmas** (régional 166k < 250k → rétrogradé, n'est plus #1).
+- **Dijon** : **palais des ducs de Bourgogne**, musée des Beaux-Arts.
+- **Venise** : Saint-Marc, palais des Doges, Rialto / **MOSE** (digue → infra-démote ;
+  **Poveglia GARDÉ** = notoriété réelle, aucun type « interdit » → arbitrage assumé).
 
 ## Reste à faire
 
@@ -208,7 +254,9 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
    banc automatiquement. Page isolée, zéro risque.
 2. ~~**Athéna Parthénos** (Athènes)~~ **FAIT** : purge « œuvre d'art perdue »
    Q4140840 (cf. Limite 2 & « Filtres & purges »).
-3. **Persister le cache des vues** en base (fix AlwaysData, cf. Limite 3).
+3. ~~**Persister le cache des vues**~~ **FAIT** (`caa3899`) : cache fichier persistant
+   `data/.cache/pv.json` (écriture atomique, cf. Limite 3). *(En base = étape ultérieure
+   pour AlwaysData si la latence à froid redevient un souci.)*
 4. **HMS Belfast** : type « navire-musée » = lieu visitable (à ajouter au filtre).
 5. ~~Dédoublonnage~~ **FAIT** : (a) suffixe destination retiré avec la VILLE seule
    (dest « Ville, Pays ») ; (b) dédup floue par NOM — préfixe de type
@@ -217,7 +265,9 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
    commun, « regarder les adresses ») pour les noms vraiment différents (« Musée
    Solomon-R.-Guggenheim »=« Musée Guggenheim »). Helpers `dedupKey`/`isNearDup`/
    `distanceMeters`/`shareToken` **testés** ; jamais de fusion à tort (Saint-Pierre
-   vs …-aux-Liens préservés).
+   vs …-aux-Liens préservés). **(d) dédup « même article »** (`eef49e9`) : vues IDENTIQUES
+   non nulles + < 200 m = même lieu (translittération/synonyme : Jemaa/Jamaâ,
+   Olympiéion/Temple de Zeus) → rattrape ce que (b)/(c) ratent (aucun token commun).
 8. ~~**Lieux majeurs sans vues, coulés**~~ **FAIT** : les vues n'étaient prises que
    pour le top-40 Wikidata (sitelinks) + jamais Wikivoyage → Rockefeller, MET, MoMA
    sans vues, sous du bruit. `fetchTitleViews` (ranking) complète par TITRE pour tous
@@ -238,12 +288,13 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
    en FR). L'anti-foot tient car la décision stade reste sur le **FR pur**. *Reste* :
    ~~vues en langue LOCALE~~ écartées (les locaux suivent le foot → ré-injection) — le
    FR+EN-avec-stade-sur-FR couvre déjà Oslo/Athènes sans ce risque.
-8. **Mémorial du 11-Septembre (NYC) absent** : problème de SÉLECTION, pas de tri — le
-   musée est coupé au pré-tri sitelinks (`out` plafonné à 55) AVANT le classement par
-   vues. Élargir le vivier coûte ~30 s (rejeté : « pas trop lourde »). À rouvrir avec
-   un cache de vues persistant (point 3) qui amortirait un vivier plus large.
+8. ~~**Mémorial du 11-Septembre (NYC) absent**~~ **RÉSOLU** (`217e388`) : c'était un
+   problème de SÉLECTION (vivier `out` plafonné ~55 AVANT le tri par vues → le musée
+   [34 sitelinks] coupé). Le **cache persistant** (point 3) a permis d'**élargir le vivier**
+   sans exploser la latence → le mémorial est mesuré par ses vraies vues FR+EN et remonte.
+   Idem les bâtiments RÉCENTS peu multilingues (High Line, One Vanderbilt, supertalls).
 
-## Commits clés de la session (branche `feat/refonte-dashboard`)
+## Commits clés (branche `feat/refonte-dashboard`, puis `main`)
 
 - `c3e31d2` rayon 20 km + filtre « lieu » uniforme
 - `516b95a` LIMIT 500 (remplir les mégapoles)
@@ -273,3 +324,22 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
 - `c339730` dédup floue « nom + qualificatif de région » (doublon musée Grenoble)
 - `b9c8b82` popularité GLOBALE (vues FR+EN) + décision stade sur vues FR (Oslo : Munch
   remonte 4ᵉ, NYC mieux couvert, foot toujours enterré — banc 9/9)
+
+**Session suivante (sur `main`) :**
+- `caa3899` **cache des vues PERSISTANT** (`data/.cache/pv.json`, écriture atomique) → un
+  vivier large reste rapide même après redémarrage
+- `217e388` **vivier élargi** → les lieux RÉCENTS / peu multilingues remontent (High Line,
+  One Vanderbilt, supertalls, **mémorial du 11-Septembre**) — possible grâce au cache
+- `37e80f2` **DB sécurisée** : sauvegarde auto au démarrage (rotation 8) + arrêt PROPRE
+  (SIGTERM/SIGINT → flush du cache vues + fermeture PGlite) — fini la corruption au kill
+- `e16e144` **seuil langues ≥8** (icônes RÉGIONALES : Bastille de Grenoble, Marrakech) +
+  source de secours Wikipédia **filtrée par le VRAI filtre lieu** (émeute « Journée des
+  Tuiles », académie → bannies STRUCTURELLEMENT)
+- `dc1cb78` **stade : plancher vues FR 100k → 250k** — seuls les stades MONDIAUX restent
+  (Chaban-Delmas régional n'est plus #1 à Bordeaux)
+- `b6e98c6` **banc → 15 villes** (+ Grenoble, Marrakech, Bordeaux, Dijon, Venise ; tailles
+  & pays variés)
+- `eef49e9` **dédup « même article »** (vues IDENTIQUES + < 200 m → doublons
+  translittération/synonyme virés : Jemaa/Jamaâ, Olympiéion/Temple de Zeus)
+- `4640b82` **démote infra/labo** (branche `infra` : digue MOSE Q24853940 + institut de
+  recherche IRAM Q31855 ; garde-fous musée/tourisme ; port de commerce NON visé)
