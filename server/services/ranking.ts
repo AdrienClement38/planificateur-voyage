@@ -11,6 +11,13 @@
  */
 import { fetchJson } from "./http";
 import { capMap } from "./cache";
+import {
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  mkdirSync,
+  existsSync,
+} from "node:fs";
 
 /**
  * Vues Wikipédia sur les 3 DERNIÈRES ANNÉES (≠ 60 j) pour des titres d'articles,
@@ -24,7 +31,55 @@ import { capMap } from "./cache";
 // est quasi instantané (et les lieux partagés entre villes profitent du cache).
 const PV_CACHE = new Map<string, { at: number; v: number }>();
 const PV_TTL = 14 * 24 * 60 * 60 * 1000;
-const PV_CACHE_MAX = 5000; // toit d'entrées → mémoire bornée (process longue durée)
+const PV_CACHE_MAX = 20000; // toit d'entrées (cache persistant : on en garde beaucoup plus)
+
+// PERSISTANCE du cache de vues sur DISQUE (JSON), pour qu'il SURVIVE aux redémarrages :
+// le gros vivier reste alors RAPIDE en permanence (les vues bougent lentement → re-mesure
+// tous les 14 j). Fichier HORS de data/dev (≠ PGlite) → aucun risque pour la base. Non
+// critique : fichier illisible → on repart d'un cache vide (on re-mesure simplement).
+const PV_CACHE_PATH =
+  process.env.PGLITE_DIR || process.env.DATABASE_URL
+    ? null // tests / prod (Postgres gère son cache) : pas de fichier local
+    : "./data/.cache/pv.json";
+let pvLoaded = false;
+let pvDirty = 0;
+
+function loadPvCache(): void {
+  if (pvLoaded) return;
+  pvLoaded = true;
+  if (!PV_CACHE_PATH || !existsSync(PV_CACHE_PATH)) return;
+  try {
+    const obj = JSON.parse(readFileSync(PV_CACHE_PATH, "utf8")) as Record<
+      string,
+      { at: number; v: number }
+    >;
+    for (const [k, val] of Object.entries(obj)) PV_CACHE.set(k, val);
+  } catch {
+    /* cache illisible → on repart d'un cache vide (non critique) */
+  }
+}
+
+function savePvCache(): void {
+  if (!PV_CACHE_PATH) return;
+  try {
+    mkdirSync("./data/.cache", { recursive: true });
+    const obj: Record<string, { at: number; v: number }> = {};
+    for (const [k, val] of PV_CACHE) obj[k] = val;
+    const tmp = `${PV_CACHE_PATH}.tmp`;
+    writeFileSync(tmp, JSON.stringify(obj));
+    renameSync(tmp, PV_CACHE_PATH); // écriture ATOMIQUE : on écrit .tmp puis on renomme
+  } catch {
+    /* échec de sauvegarde du cache = non critique */
+  }
+}
+
+/** Force la sauvegarde du cache des vues — appelé à l'ARRÊT PROPRE du serveur (server.ts). */
+export function flushViewsCache(): void {
+  if (pvDirty > 0) {
+    savePvCache();
+    pvDirty = 0;
+  }
+}
 
 async function wikiPageviews(
   lang: string,
@@ -32,6 +87,7 @@ async function wikiPageviews(
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (titles.length === 0) return out;
+  loadPvCache(); // 1er appel : recharge le cache persistant (vues des sessions passées)
   const now = new Date();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const end = `${now.getFullYear()}${mm}0100`; // 1er du mois courant
@@ -61,6 +117,7 @@ async function wikiPageviews(
         for (const it of data.items ?? []) s += it.views ?? 0;
         PV_CACHE.set(key, { at: now.getTime(), v: s }); // ne cache QUE les succès
         capMap(PV_CACHE, PV_CACHE_MAX);
+        if (++pvDirty >= 200) flushViewsCache(); // sauvegarde débouncée (tous les 200)
         return s;
       }
     }

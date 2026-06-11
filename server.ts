@@ -12,6 +12,7 @@ import uploadsRouter from "./server/routes/uploads";
 import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
 import { closeDb } from "./server/db/client";
+import { flushViewsCache } from "./server/services/ranking";
 import { createServer } from "node:http";
 import { initRealtime } from "./server/realtime";
 import { fetchPlaceActivities } from "./server/services/places";
@@ -626,6 +627,7 @@ async function startServer() {
     closing = true;
     console.log(`[shutdown] ${signal} reçu — fermeture propre…`);
     httpServer.close();
+    flushViewsCache(); // sauvegarde finale du cache des vues (sinon perdu)
     try {
       await closeDb();
       console.log("[shutdown] base fermée proprement.");
