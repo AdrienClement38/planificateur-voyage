@@ -96,15 +96,16 @@ const WD_BAD_TYPES = new Set([
 ]);
 
 /**
- * Plancher de vues FR (3 ans) pour qu'un stade reste affiché. On ne garde QUE le
- * stade le PLUS consulté de la ville (l'iconique) ET seulement s'il dépasse ce
- * plancher ; tous les autres stades (2ᵉ rang local) sont rétrogradés. Un SEUIL
- * ABSOLU ne marche PAS : Lluís-Companys (307k, 2ᵉ de Barcelone, à virer) dépasse
- * Old Trafford (122k) et Anfield (127k) — stades-villes mythiques à garder. D'où
- * la règle « top de la ville + plancher ». 100k garde Old Trafford/Anfield et vire
- * les stades locaux (Ullevaal 15k, Karaïskákis 34k, Bislett 4k).
+ * Plancher de vues FR (3 ans) pour qu'un stade reste affiché. On ne garde QUE le stade
+ * le PLUS consulté de la ville ET seulement s'il dépasse ce plancher ; les autres sont
+ * rétrogradés. Calé pour ne garder que les stades MONDIALEMENT iconiques et rétrograder
+ * les RÉGIONAUX — il y a un trou net dans les vues FR : iconiques (Vélodrome 520k, Camp
+ * Nou 513k, Wembley 339k) vs régionaux (Chaban-Delmas 166k → n'est PLUS #1 à Bordeaux,
+ * Matmut 152k, Old Trafford 122k, Anfield 127k). Décision sur les vues FR PURES (≠ total
+ * FR+EN gonflé par le foot mondial, cf. discoverWikidata). Un stade marqué « site
+ * touristique » (panathénaïque antique) est exempté d'office.
  */
-const STADIUM_VIEWS_MIN = 100_000;
+const STADIUM_VIEWS_MIN = 250_000;
 
 /**
  * Nombre de SOMMETS gardés par ville (les plus consultés) ; au-delà, rétrogradés.
