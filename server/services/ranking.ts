@@ -140,14 +140,63 @@ export async function fetchPopularity(
 }
 
 /**
- * Vues Wikipédia FR (3 ans) par TITRE d'article (≠ par Q-id). Sert à donner une
- * notoriété RÉELLE aux lieux qu'un classement par Q-id rate : ceux sans Q-id
- * exploitable (Wikivoyage) ou hors du pré-tri sitelinks de Wikidata. Sans ça, des
- * lieux MAJEURS (Rockefeller, MET, MoMA…) restaient sans vues, donc relégués sous
- * des lieux mineurs qui, eux, en avaient. Map { titre → vues }, dédupliquée.
+ * Pour des TITRES d'articles FR, résout le titre EN ÉQUIVALENT via l'item Wikidata
+ * partagé (schema:about) — une requête SPARQL par lot de 50. Permet de mesurer FR+EN
+ * même les lieux sans Q-id connu côté appelant (Wikivoyage). Tolérant à l'échec : un
+ * titre non résolu sera simplement compté en FR seul. Map { titre FR → titre EN }.
+ */
+async function resolveEnTitles(
+  frTitles: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < frTitles.length; i += 50) {
+    const batch = frTitles.slice(i, i + 50);
+    const values = batch
+      .map((t) => `"${t.replace(/[\\"]/g, " ")}"@fr`)
+      .join(" ");
+    const sparql =
+      `SELECT ?frT ?enT WHERE { VALUES ?frT { ${values} } ` +
+      `?fa schema:about ?item; schema:isPartOf <https://fr.wikipedia.org/>; schema:name ?frT. ` +
+      `?ea schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enT. }`;
+    const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+    const data = (await fetchJson(url, 12000)) as {
+      results?: {
+        bindings?: Array<{ frT?: { value?: string }; enT?: { value?: string } }>;
+      };
+    } | null;
+    for (const b of data?.results?.bindings ?? []) {
+      if (b.frT?.value && b.enT?.value) out.set(b.frT.value, b.enT.value);
+    }
+  }
+  return out;
+}
+
+/**
+ * Notoriété RÉELLE **FR+EN** par TITRE d'article (≠ par Q-id). Donne une mesure aux
+ * lieux qu'un classement par Q-id rate : ceux sans Q-id exploitable (Wikivoyage) ou
+ * hors du pré-tri sitelinks de Wikidata. CRUCIAL : on somme FR+EN pour rester sur la
+ * **même échelle que `fetchPopularity`** (sonde Wikidata). Sinon ces lieux seraient
+ * mesurés en FR PUR (~200k) et passeraient SOUS des lieux mesurés FR+EN (~M) — c'est
+ * ce qui enterrait le MET, le MoMA, le Muséum d'histoire naturelle de NYC (venus de
+ * Wikivoyage) sous des gratte-ciels obscurs. Map { titre → vues FR+EN }, dédupliquée.
  */
 export async function fetchTitleViews(
   titles: string[],
 ): Promise<Map<string, number>> {
-  return wikiPageviews("fr", [...new Set(titles.filter(Boolean))]);
+  const uniq = [...new Set(titles.filter(Boolean))];
+  if (uniq.length === 0) return new Map();
+  const enOf = await resolveEnTitles(uniq);
+  const [frViews, enViews] = await Promise.all([
+    wikiPageviews("fr", uniq),
+    wikiPageviews("en", [...new Set([...enOf.values()])]),
+  ]);
+  const out = new Map<string, number>();
+  for (const t of uniq) {
+    const fr = frViews.get(t) ?? 0;
+    const enT = enOf.get(t);
+    const en = enT ? (enViews.get(enT) ?? 0) : 0;
+    const total = fr + en;
+    if (total > 0) out.set(t, total);
+  }
+  return out;
 }

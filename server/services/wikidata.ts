@@ -112,17 +112,21 @@ const STADIUM_VIEWS_MIN = 100_000;
 const SUMMIT_KEEP = 5;
 
 /**
- * Type Wikidata « attraction touristique » (Q570116) : classification CURÉE qui
- * signifie « lieu que les touristes visitent ». Utilisé comme signal de SÉLECTION
- * (jamais de tri) : une telle entité est MESURÉE par ses vues même si son rang
- * sitelinks la ferait couper avant — car sitelinks = nombre de langues ≠ notoriété
- * touristique (tout l'intérêt du re-classement par vues). Sans ça, une attraction
- * majeure mais peu multilingue est éliminée AVANT d'être mesurée : ex. le mémorial du
- * 11-Septembre à NYC (34 sitelinks → rang ~138, donc coupé ; mais 1,2 M de vues FR+EN
- * → top ~20 une fois mesuré). On ne touche PAS au tri (100 % vues) : on évite juste
- * une coupe aveugle en amont. Garde-fou : `ATTRACTION_PROBE_CAP` borne le surcoût.
+ * Types Wikidata « à mesurer à coup sûr » : attraction touristique (Q570116) ET musée
+ * (Q33506) — classifications CURÉES de lieux que les touristes visitent. Signal de
+ * SÉLECTION (jamais de tri) : une telle entité est MESURÉE par ses vues même si son
+ * rang sitelinks la ferait couper avant — car sitelinks = nombre de langues ≠ notoriété
+ * touristique (tout l'intérêt du re-classement par vues). Deux symptômes que ça corrige :
+ *  - une attraction majeure mais peu multilingue est éliminée avant d'être mesurée
+ *    (mémorial du 11-Septembre : 34 sitelinks → rang ~138, mais 1,2 M de vues FR+EN) ;
+ *  - un GRAND MUSÉE hors du top-40 sitelinks n'est mesuré QUE sur ses vues FR (top-up
+ *    par titre), donc sur une échelle ≠ des lieux mesurés FR+EN → classé bien trop bas
+ *    (le MET, le MoMA, le Muséum d'histoire naturelle de NYC passaient SOUS des
+ *    gratte-ciels obscurs). En les mesurant FR+EN ici, ils retrouvent leur vrai rang.
+ * On ne touche PAS au tri (100 % vues) : on évite une coupe/mesure aveugle en amont.
+ * Garde-fou : `ATTRACTION_PROBE_CAP` borne le surcoût d'appels.
  */
-const TOURIST_ATTRACTION = "Q570116";
+const LANE_TYPES = ["Q570116", "Q33506"];
 
 interface WdAgg {
   label: string;
@@ -259,7 +263,7 @@ export async function discoverWikidata(
   const attractionIdx: number[] = []; // positions (dans out) des attractions touristiques
   for (const [id, a] of survivors) {
     if (drop.has(id)) continue;
-    const isAttraction = a.types.has(TOURIST_ATTRACTION);
+    const isAttraction = LANE_TYPES.some((t) => a.types.has(t));
     // Coupe par sitelinks — SAUF attraction touristique, laissée passer pour mesurer
     // ses vues (continue, PAS break : on continue de scanner pour en trouver d'autres).
     if (out.length >= OUT_BASE && !isAttraction) continue;
