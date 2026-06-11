@@ -95,59 +95,72 @@ export async function wikidataPlaceFilter(
 
 /**
  * Purge SECONDAIRE (non critique) : parmi des Q-ids déjà confirmés « lieux »,
- * renvoie ceux à ÉCARTER — cours d'eau (rivières), chaînes/massifs de montagnes,
- * communes SÉPARÉES (zone habitée Q486972 qui n'est PAS un quartier
- * Q123705/Q2983893 → vire Courmayeur, garde Montmartre/Trastevere), œuvres d'art
- * exposées DANS un édifice (La Pietà…) et œuvres d'art DISPARUES (Athéna Parthénos
- * & autres colosses antiques détruits). Léger (sur ~50 survivants) ; DEUX requêtes
- * EN PARALLÈLE (lourde + « œuvre perdue » isolée), chacune fail-safe : l'échec de
- * l'une ne purge rien pour sa part, les vues classant de toute façon ces parasites bas.
+ * renvoie ceux à ÉCARTER — cours d'eau/estuaires/détroits, chaînes/massifs, centrales,
+ * communes SÉPARÉES (zone habitée Q486972 qui n'est PAS un quartier Q123705/Q2983893
+ * → vire Jersey City/Courmayeur, garde Greenwich Village/Trastevere), COMTÉS/
+ * arrondissements (Q28575 → vire Manhattan/Bronx, que l'exception « quartier » sauvait
+ * à tort), œuvres exposées DANS un édifice (La Pietà…) et œuvres DISPARUES (Athéna
+ * Parthénos…). Léger (sur ~50 survivants) ; QUATRE requêtes EN PARALLÈLE par famille,
+ * chacune fail-safe et ISOLÉE : une branche lente (œuvre-dans-édifice) qui expire ne
+ * fait PLUS tomber les autres (sinon rivières/communes/arrondissements repassaient en
+ * bloc) ; les vues classent de toute façon ces parasites bas.
  */
 export async function wikidataPurge(qids: string[]): Promise<Set<string>> {
   if (qids.length === 0) return new Set();
   const values = qids.map((q) => `wd:${q}`).join(" ");
-  // Purge LOURDE : rivières (Q355304), chaînes/massifs (Q46831), CENTRALES électriques
-  // (Q159719, dont les centrales NUCLÉAIRES Tricastin/Cruas — un site industriel, pas
-  // une visite ; les BARRAGES Q12323 ne sont PAS des centrales → conservés), communes
-  // SÉPARÉES (Q486972 hors quartier Q123705/Q2983893), et œuvre d'art exposée DANS un
-  // édifice (basilique, musée, église, palais — P276 → bâtiment) = un OBJET, pas un
-  // « lieu » à part (ex. La Pietà, David ; déjà listée dans « Œuvres à voir » du lieu).
-  // On GARDE les statues en EXTÉRIEUR (Manneken-Pis, Statue de la Liberté), dont le
-  // lieu n'est pas un édifice clos. Requête à plusieurs branches → la plus coûteuse.
-  const heavy =
+  // (1) PLANS D'EAU & reliefs & sites industriels : cours d'eau (Q355304), ESTUAIRE
+  // (Q47053) & DÉTROIT (Q37901) — l'East River est un estuaire, PAS une rivière —,
+  // chaîne/massif (Q46831), centrale électrique (Q159719, dont les NUCLÉAIRES
+  // Tricastin/Cruas ; les BARRAGES Q12323 ne sont PAS des centrales → conservés).
+  const waterLand =
+    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
+    `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q47053 wd:Q37901 wd:Q46831 wd:Q159719 } }`;
+  // (2) ZONES ADMINISTRATIVES trop larges : commune SÉPARÉE (Q486972 hors quartier
+  // Q123705/Q2983893 → vire Jersey City/Hoboken, garde Greenwich Village/Montmartre) ET
+  // COMTÉ (Q28575), qui capte les arrondissements « consolidated city-county » (Manhattan,
+  // Bronx, Queens, Staten Island) que l'exception « quartier » sauvait à tort ; un quartier
+  // pur n'est PAS un comté → conservé. Exception « attraction » (Q570116) par sécurité.
+  const adminArea =
     `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } { ` +
-    `?item wdt:P31/wdt:P279* ?b. VALUES ?b { wd:Q355304 wd:Q46831 wd:Q159719 } ` +
-    `} UNION { ` +
     `?item wdt:P31/wdt:P279* wd:Q486972. ` +
     `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* ?q. VALUES ?q { wd:Q123705 wd:Q2983893 } } ` +
     `} UNION { ` +
+    `?item wdt:P31/wdt:P279* wd:Q28575. ` +
+    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } } }`;
+  // (3) ŒUVRE D'ART exposée DANS un édifice (P276 → musée/basilique/église/palais) = un
+  // OBJET, pas un « lieu » à part (La Pietà, David ; déjà dans « Œuvres à voir » du lieu).
+  // On GARDE les statues en EXTÉRIEUR (Manneken-Pis, Liberté), dont le lieu n'est pas clos.
+  const artInBuilding =
+    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
     `?item wdt:P31 ?at. VALUES ?at { wd:Q860861 wd:Q3305213 wd:Q179700 wd:Q22669139 wd:Q838948 wd:Q4502142 } ` +
     `?item wdt:P276 ?loc. ?loc wdt:P31/wdt:P279* ?bt. ` +
-    `VALUES ?bt { wd:Q33506 wd:Q1370598 wd:Q16970 wd:Q41176 wd:Q16560 } } }`;
+    `VALUES ?bt { wd:Q33506 wd:Q1370598 wd:Q16970 wd:Q41176 wd:Q16560 } }`;
   // Purge LÉGÈRE et ISOLÉE : œuvre d'art DISPARUE/détruite (P31/P279* → « œuvre
   // d'art perdue » Q4140840). L'original n'existe PLUS → pas un lieu visitable, même
   // s'il reste géotaggé à son ancien emplacement. Ex. Athéna Parthénos / Athéna
   // Promachos / Athéna Lemnia (colosses de Phidias détruits dans l'Antiquité,
   // géotaggés sur l'Acropole, sitelinks ≥17 → bien classés, donc nuisibles en liste).
-  // Même classe que La Pietà/Le Cri, MAIS sans P276→édifice exploitable par la purge
-  // lourde (leur emplacement P276 est le Parthénon, un TEMPLE hors allow-list) — d'où
-  // cette purge dédiée. Requête à PART (un seul P31/P279* → réponse <1 s) lancée EN
-  // PARALLÈLE : elle aboutit MÊME quand la requête lourde expire (Wikidata sous
+  // Même classe que La Pietà/Le Cri, MAIS sans P276→édifice exploitable par la branche
+  // « œuvre-dans-édifice » (leur P276 est le Parthénon, un TEMPLE hors allow-list) —
+  // d'où cette purge dédiée. Requête à PART (un seul P31/P279* → réponse <1 s) lancée EN
+  // PARALLÈLE : elle aboutit MÊME quand les autres branches saturent (Wikidata sous
   // charge), donc cette purge ciblée n'est jamais l'otage de la latence des autres
   // branches. On NE touche PAS aux statues EXISTANTES (Liberté, Manneken-Pis) ni aux
   // sites archéologiques (Agora, Aréopage) : aucun n'est une « œuvre perdue » (vérifié).
   const lost =
     `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
     `?item wdt:P31/wdt:P279* wd:Q4140840. }`;
-  // Les deux EN PARALLÈLE, chacune fail-safe (null → ignorée) : on ne purge jamais à
-  // tort, et l'échec de l'une n'empêche pas l'autre de filtrer. On réunit les deux.
-  const [heavyDrop, lostDrop] = await Promise.all([
-    sparqlItemSet(heavy, 10000),
+  // Les QUATRE EN PARALLÈLE, chacune fail-safe (null → ignorée) : on ne purge jamais à
+  // tort, et l'échec/expiration d'UNE branche n'empêche pas les autres de filtrer (clé
+  // de la robustesse : avant, une seule requête UNION expirait en bloc). On réunit tout.
+  const parts = await Promise.all([
+    sparqlItemSet(waterLand, 8000),
+    sparqlItemSet(adminArea, 9000),
+    sparqlItemSet(artInBuilding, 10000),
     sparqlItemSet(lost, 8000),
   ]);
   const drop = new Set<string>();
-  for (const id of heavyDrop ?? []) drop.add(id);
-  for (const id of lostDrop ?? []) drop.add(id);
+  for (const part of parts) for (const id of part ?? []) drop.add(id);
   return drop;
 }
 
@@ -161,6 +174,11 @@ export async function wikidataPurge(qids: string[]): Promise<Set<string>> {
  *    SEULEMENT si peu de vues (< STADIUM_VIEWS_MIN, testé en aval), pour virer les
  *    stades locaux « au pif » tout en GARDANT les mondiaux (Camp Nou…). Épargnée
  *    si « site touristique » (stade panathénaïque antique).
+ *  - `summits` : sommets en EXCÈS (au-delà de SUMMIT_KEEP, testé en aval).
+ *  - `hoods` : QUARTIER résidentiel (Q123705/Q2983893) — rétrogradé pour ne pas
+ *    INONDER la liste de zones (Upper West Side, SoHo, TriBeCa…) au détriment des
+ *    SITES précis. Épargné si « site touristique » (Q570116 : Times Square) ou plage
+ *    (Q40080 : Coney Island) → ces lieux-destinations restent en haut.
  * On teste le tourisme en P31 DIRECT (pas P279*) : la hiérarchie des sous-classes
  * relie à tort certaines gares à « site touristique » (ex. « gare en cul-de-sac »).
  * Fail-safe : en cas d'échec réseau, ensembles vides → on ne rétrograde rien.
@@ -169,11 +187,13 @@ export async function wikidataClassifyDemote(qids: string[]): Promise<{
   transit: Set<string>;
   sports: Set<string>;
   summits: Set<string>;
+  hoods: Set<string>;
 }> {
   const out = {
     transit: new Set<string>(),
     sports: new Set<string>(),
     summits: new Set<string>(),
+    hoods: new Set<string>(),
   };
   if (qids.length === 0) return out;
   const values = qids.map((q) => `wd:${q}`).join(" ");
@@ -189,7 +209,16 @@ export async function wikidataClassifyDemote(qids: string[]): Promise<{
     // est noyée sous des dizaines de pics notables pour les alpinistes mais sans
     // intérêt touristique. On ne garde que les plus connus (cf. SUMMIT_KEEP). Les
     // GLACIERS (Mer de Glace, Q35666) ne sont PAS des sommets → jamais touchés.
-    `?item wdt:P31/wdt:P279* ?mt. VALUES ?mt { wd:Q8502 wd:Q207326 } BIND("m" AS ?kind) } }`;
+    `?item wdt:P31/wdt:P279* ?mt. VALUES ?mt { wd:Q8502 wd:Q207326 } BIND("m" AS ?kind) ` +
+    `} UNION { ` +
+    // QUARTIERS résidentiels (Q123705/Q2983893) : rétrogradés pour ne pas inonder la
+    // liste de zones (Upper West Side, SoHo, TriBeCa…) au détriment des SITES précis.
+    // Épargnés si « site touristique » DIRECT (Q570116 : Times Square) ou plage (Q40080 :
+    // Coney Island) → ces lieux-destinations restent en haut. Jamais supprimés, juste bas.
+    `?item wdt:P31/wdt:P279* ?nb. VALUES ?nb { wd:Q123705 wd:Q2983893 } ` +
+    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } ` +
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* wd:Q40080 } ` +
+    `BIND("n" AS ?kind) } }`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
   let data = (await fetchJson(url, 9000)) as {
     results?: {
@@ -210,6 +239,7 @@ export async function wikidataClassifyDemote(qids: string[]): Promise<{
     if (b.kind?.value === "t") out.transit.add(qid);
     else if (b.kind?.value === "s") out.sports.add(qid);
     else if (b.kind?.value === "m") out.summits.add(qid);
+    else if (b.kind?.value === "n") out.hoods.add(qid);
   }
   return out;
 }

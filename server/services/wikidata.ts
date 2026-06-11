@@ -111,6 +111,19 @@ const STADIUM_VIEWS_MIN = 100_000;
  */
 const SUMMIT_KEEP = 5;
 
+/**
+ * Type Wikidata « attraction touristique » (Q570116) : classification CURÉE qui
+ * signifie « lieu que les touristes visitent ». Utilisé comme signal de SÉLECTION
+ * (jamais de tri) : une telle entité est MESURÉE par ses vues même si son rang
+ * sitelinks la ferait couper avant — car sitelinks = nombre de langues ≠ notoriété
+ * touristique (tout l'intérêt du re-classement par vues). Sans ça, une attraction
+ * majeure mais peu multilingue est éliminée AVANT d'être mesurée : ex. le mémorial du
+ * 11-Septembre à NYC (34 sitelinks → rang ~138, donc coupé ; mais 1,2 M de vues FR+EN
+ * → top ~20 une fois mesuré). On ne touche PAS au tri (100 % vues) : on évite juste
+ * une coupe aveugle en amont. Garde-fou : `ATTRACTION_PROBE_CAP` borne le surcoût.
+ */
+const TOURIST_ATTRACTION = "Q570116";
+
 interface WdAgg {
   label: string;
   sitelinks: number;
@@ -235,10 +248,22 @@ export async function discoverWikidata(
     wikidataClassifyDemote(survivors.map(([id]) => id)),
   ]);
 
+  // SÉLECTION pour la mesure des vues. On garde les 55 premiers par sitelinks (pré-tri
+  // de notoriété brut) MAIS sans jamais couper une « attraction touristique » (cf.
+  // TOURIST_ATTRACTION), qui doit pouvoir être classée par ses VUES. Un plafond dur
+  // borne le volume pour les villes très « tourist-taggées ».
+  const OUT_BASE = 55;
+  const OUT_HARD = 75;
   const out: PlaceActivity[] = [];
   const outIds: string[] = [];
+  const attractionIdx: number[] = []; // positions (dans out) des attractions touristiques
   for (const [id, a] of survivors) {
     if (drop.has(id)) continue;
+    const isAttraction = a.types.has(TOURIST_ATTRACTION);
+    // Coupe par sitelinks — SAUF attraction touristique, laissée passer pour mesurer
+    // ses vues (continue, PAS break : on continue de scanner pour en trouver d'autres).
+    if (out.length >= OUT_BASE && !isAttraction) continue;
+    if (out.length >= OUT_HARD) break;
     const { category, duration } = classifyTitle(a.label);
     out.push({
       name: a.label,
@@ -252,22 +277,37 @@ export async function discoverWikidata(
       imageUrl: a.image
         ? a.image.replace(/^http:/, "https:") + "?width=800"
         : undefined,
-      demote: demote.transit.has(id) || undefined, // transit : rétrogradé d'office
+      // transit + quartier résidentiel : rétrogradés d'office (cf. wikidataClassifyDemote).
+      demote: demote.transit.has(id) || demote.hoods.has(id) || undefined,
       lat: a.lat,
       lon: a.lon,
     });
+    if (isAttraction) attractionIdx.push(out.length - 1);
     outIds.push(id);
-    if (out.length >= 55) break;
   }
 
   // Re-classement par notoriété TOURISTIQUE : on remplace le tri par sitelinks
   // (nombre de langues, qui sur-classe communes/rivières) par les VRAIES vues
   // Wikipédia FR+EN. Repli sur les sitelinks pour les rares lieux sans article
   // consulté. C'est ce tri (via `fame`) que la curation finale réutilise.
-  // On ne sonde les vues que pour les ~40 meilleurs candidats (par sitelinks) :
-  // c'est là que se joue le re-classement utile (page 1-2), et ça limite le
-  // nombre d'appels REST. Le reste garde son rang sitelinks (queue de liste).
-  const popularity = await fetchPopularity(outIds.slice(0, 40));
+  // On sonde les ~40 meilleurs candidats (par sitelinks) — là se joue le re-classement
+  // utile (page 1-2) — PLUS toute « attraction touristique » au-delà (bornée), pour
+  // qu'elle soit classée par ses vues et non coupée à l'aveugle. Surcoût minime : les
+  // attractions notables sont déjà dans le top 40 ; seules les rares à bas sitelinks
+  // (mémorial du 11-Septembre…) ajoutent une poignée d'appels REST.
+  const PROBE_TOP = 40;
+  const ATTRACTION_PROBE_CAP = 20; // borne pour les villes très « tourist-taggées »
+  const probeIds = new Set<string>();
+  for (let i = 0; i < Math.min(PROBE_TOP, outIds.length); i++)
+    probeIds.add(outIds[i]);
+  let extraProbes = 0;
+  for (const i of attractionIdx) {
+    if (i < PROBE_TOP) continue; // déjà sondé via le top-40
+    if (extraProbes >= ATTRACTION_PROBE_CAP) break;
+    probeIds.add(outIds[i]);
+    extraProbes++;
+  }
+  const popularity = await fetchPopularity([...probeIds]);
   out.forEach((p, i) => {
     const pop = popularity.get(outIds[i]);
     if (pop && pop.total > 0) {
