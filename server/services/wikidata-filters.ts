@@ -150,7 +150,15 @@ export async function wikidataPurge(qids: string[]): Promise<Set<string>> {
   const lost =
     `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
     `?item wdt:P31/wdt:P279* wd:Q4140840. }`;
-  // Les QUATRE EN PARALLÈLE, chacune fail-safe (null → ignorée) : on ne purge jamais à
+  // (5) STRUCTURE DÉMOLIE / DISPARUE : possède une date de démolition/dissolution
+  // (P576) → n'existe PLUS, donc pas une visite (ex. Singer Building, démoli en 1968 ;
+  // ancienne Penn Station). Ces lieux remontaient via leurs vues HISTORIQUES une fois le
+  // vivier élargi. Exception « site touristique » (Q570116) : une ruine mémorialisée
+  // (qqch encore visitable) reste. Une seule branche P576 → réponse <1 s.
+  const demolished =
+    `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ` +
+    `?item wdt:P576 ?dem. FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } }`;
+  // Les CINQ EN PARALLÈLE, chacune fail-safe (null → ignorée) : on ne purge jamais à
   // tort, et l'échec/expiration d'UNE branche n'empêche pas les autres de filtrer (clé
   // de la robustesse : avant, une seule requête UNION expirait en bloc). On réunit tout.
   const parts = await Promise.all([
@@ -158,6 +166,7 @@ export async function wikidataPurge(qids: string[]): Promise<Set<string>> {
     sparqlItemSet(adminArea, 9000),
     sparqlItemSet(artInBuilding, 10000),
     sparqlItemSet(lost, 8000),
+    sparqlItemSet(demolished, 8000),
   ]);
   const drop = new Set<string>();
   for (const part of parts) for (const id of part ?? []) drop.add(id);

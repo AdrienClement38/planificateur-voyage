@@ -215,11 +215,12 @@ export async function discoverWikidata(
   const destLow = destination.toLowerCase().split(/[,(]/)[0].trim();
   // Candidats triés par notoriété, hors types évidents non visitables et hors
   // destination elle-même.
-  // On prend TRÈS LARGE (220 sur les 500 récupérés) : beaucoup de candidats à
-  // fort sitelinks sont des non-lieux (orgas, événements, régions…) retirés
-  // ensuite par le filtre « lieu ». Dans une mégapole, les vrais lieux du 2e
-  // rang sont noyés très bas dans le classement de notoriété — il faut donc
-  // sur-échantillonner massivement pour en faire remonter ~50 à la fin.
+  // On prend TRÈS LARGE (400 sur les 500 récupérés) : beaucoup de candidats à fort
+  // sitelinks sont des non-lieux (orgas, événements, régions…) retirés ensuite par le
+  // filtre « lieu ». Surtout, dans une mégapole les lieux RÉCENTS (peu de langues mais
+  // grosses vues : High Line, One Vanderbilt, gratte-ciels supertall…) sont très bas au
+  // classement sitelinks — il faut un vivier LARGE pour qu'ils soient MESURÉS par leurs
+  // vues (cf. plus bas). Le surcoût n'existe qu'au 1er passage (cache de vues persistant).
   const candidates = [...byId.entries()]
     .filter(
       ([, a]) =>
@@ -227,7 +228,7 @@ export async function discoverWikidata(
         a.label.toLowerCase() !== destLow,
     )
     .sort((a, b) => b[1].sitelinks - a[1].sitelinks)
-    .slice(0, 220);
+    .slice(0, 400);
   if (candidates.length === 0) return [];
 
   // Vérifie que chaque candidat EST un lieu (sous-classe de « lieu ») : écarte
@@ -252,12 +253,13 @@ export async function discoverWikidata(
     wikidataClassifyDemote(survivors.map(([id]) => id)),
   ]);
 
-  // SÉLECTION pour la mesure des vues. On garde les 55 premiers par sitelinks (pré-tri
-  // de notoriété brut) MAIS sans jamais couper une « attraction touristique » (cf.
-  // TOURIST_ATTRACTION), qui doit pouvoir être classée par ses VUES. Un plafond dur
-  // borne le volume pour les villes très « tourist-taggées ».
-  const OUT_BASE = 55;
-  const OUT_HARD = 75;
+  // SÉLECTION pour la mesure des vues. On retient un GROS lot de survivants par sitelinks
+  // pour que les lieux à grosses vues mais PEU de langues (récents : One Vanderbilt,
+  // gratte-ciels supertall, High Line…) soient MESURÉS et non coupés en amont. Ce gros
+  // vivier ne coûte cher qu'au 1er passage : le cache de vues PERSISTANT (cf. ranking.ts)
+  // le rend ensuite quasi instantané. Le tri final reste 100 % vues (aucun bonus/malus).
+  const OUT_BASE = 250;
+  const OUT_HARD = 300;
   const out: PlaceActivity[] = [];
   const outIds: string[] = [];
   const attractionIdx: number[] = []; // positions (dans out) des attractions touristiques
@@ -294,13 +296,12 @@ export async function discoverWikidata(
   // (nombre de langues, qui sur-classe communes/rivières) par les VRAIES vues
   // Wikipédia FR+EN. Repli sur les sitelinks pour les rares lieux sans article
   // consulté. C'est ce tri (via `fame`) que la curation finale réutilise.
-  // On sonde les ~40 meilleurs candidats (par sitelinks) — là se joue le re-classement
-  // utile (page 1-2) — PLUS toute « attraction touristique » au-delà (bornée), pour
-  // qu'elle soit classée par ses vues et non coupée à l'aveugle. Surcoût minime : les
-  // attractions notables sont déjà dans le top 40 ; seules les rares à bas sitelinks
-  // (mémorial du 11-Septembre…) ajoutent une poignée d'appels REST.
-  const PROBE_TOP = 40;
-  const ATTRACTION_PROBE_CAP = 20; // borne pour les villes très « tourist-taggées »
+  // On sonde les vues de TOUT le lot retenu (jusqu'à PROBE_TOP) — c'est CE qui permet
+  // aux lieux à grosses vues mais peu de langues (récents) de se classer à leur vraie
+  // place au lieu d'être coupés au pré-tri sitelinks. Coûteux au 1er passage SEULEMENT :
+  // le cache de vues persistant (ranking.ts) rend les passages suivants quasi instantanés.
+  const PROBE_TOP = 300;
+  const ATTRACTION_PROBE_CAP = 40; // garde-fou résiduel (le top couvre déjà tout le lot)
   const probeIds = new Set<string>();
   for (let i = 0; i < Math.min(PROBE_TOP, outIds.length); i++)
     probeIds.add(outIds[i]);
@@ -353,9 +354,15 @@ export async function discoverWikidata(
   summitIdx.slice(SUMMIT_KEEP).forEach((i) => {
     out[i].demote = true;
   });
-  // Tri local par vues/fame. NB : l'ordre DÉFINITIF est posé au tri final de
-  // doFetchPlaceActivities (qui fusionne toutes les sources et fait le palier
-  // « vues d'abord »). Ce tri-ci ne sert qu'à un éventuel usage direct.
-  out.sort((a, b) => (b.views ?? b.fame ?? 0) - (a.views ?? a.fame ?? 0));
-  return out;
+  // Tri demote-aware (rétrogradés en DERNIER) puis par vues, et on ne RENVOIE que le
+  // top-60. CLÉ de l'élargissement : on a MESURÉ large (300, pour faire émerger les
+  // récents par leurs VUES — High Line, gratte-ciels supertall…), mais on ne renvoie
+  // que le meilleur lot → la fusion (places.ts) garde de la place pour les AUTRES
+  // sources (musées de Wikivoyage : MET, MoMA, Muséum…) au lieu d'être noyée par les
+  // 250 lieux Wikidata. L'ordre DÉFINITIF est ensuite posé au tri final de places.ts.
+  out.sort((a, b) => {
+    if (!!a.demote !== !!b.demote) return a.demote ? 1 : -1;
+    return (b.views ?? b.fame ?? 0) - (a.views ?? a.fame ?? 0);
+  });
+  return out.slice(0, 60);
 }

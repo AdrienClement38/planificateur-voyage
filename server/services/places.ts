@@ -255,7 +255,10 @@ async function doFetchPlaceActivities(
       seen.add(k);
       seenKeys.push(k);
       merged.push(p);
-      if (merged.length >= 70) break;
+      // Plafond du lot fusionné. Wikidata ne renvoie que son top-60 (cf. discoverWikidata),
+      // donc ce plafond laisse de la place aux musées/listings Wikivoyage (MET, MoMA…) et
+      // aux POI OSM avant la curation finale. Le tri par vues + curate(50) tranchent ensuite.
+      if (merged.length >= 90) break;
     }
 
     // Enrichit avec photos + intros libres (Wikimedia). La photo devient le signal
