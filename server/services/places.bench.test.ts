@@ -103,6 +103,45 @@ const CASES: Case[] = [
     // ABSENTES de toute la liste (la purge fiabilisée ne doit plus les laisser repasser).
     notContainAll: ["Jersey City", "Hoboken", "Grand New York", "Hudson", "East River"],
   },
+  {
+    // Petite ville FR : valide le SEUIL BAS (≥8 langues) — la Bastille (8 langues, l'icône)
+    // doit remonter — ET le filtre « lieu » des sources de secours : l'émeute « Journée des
+    // Tuiles » et l'académie (non-lieux venus de Wikipédia) doivent DISPARAÎTRE.
+    city: "Grenoble, France",
+    contain: ["Bastille", "musée de Grenoble"],
+    notContain: ["Académie de Grenoble"],
+    notContainAll: ["Journée des Tuiles"],
+  },
+  {
+    // Pays NON européen / faible couverture Wikidata : les icônes peu multilingues doivent
+    // être mesurées par leurs VRAIES vues FR+EN (jadis Koutoubia [1 vue], Majorelle [30]).
+    city: "Marrakech, Maroc",
+    contain: ["Majorelle", "Koutoubia"],
+    notContain: [],
+    // La place Jemaa el-Fna ressort sous une orthographe VARIABLE selon la source qui gagne
+    // le tri (Wikidata « Jemaa el-Fna » vs Wikivoyage « Place Jamaâ el-fna ») → on matche le
+    // radical commun « el-fna », et sur la liste ENTIÈRE (robuste au throttle de l'API vues).
+    containAll: ["el-fna"],
+  },
+  {
+    // Stade RÉGIONAL (Chaban-Delmas, 166k vues FR < plancher 250k) NE doit PAS dominer une
+    // ville riche en icônes → rétrogradé. La Cité du Vin (récente, peu multilingue) remonte.
+    city: "Bordeaux, France",
+    contain: ["cathédrale", "Bourse", "Cité du Vin"],
+    notContain: ["stade Chaban"],
+  },
+  {
+    // Ville moyenne : le palais des ducs + les musées sortent (icônes patrimoniales).
+    city: "Dijon, France",
+    contain: ["palais des ducs", "musée des Beaux-Arts"],
+    notContain: [],
+  },
+  {
+    // Mégapole touristique étrangère : les incontournables en tête.
+    city: "Venise, Italie",
+    contain: ["Saint-Marc", "Doges", "Rialto"],
+    notContain: [],
+  },
 ];
 
 describe.skipIf(!process.env.RUN_BENCH)(
