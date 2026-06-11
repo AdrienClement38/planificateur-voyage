@@ -290,8 +290,13 @@ export async function discoverWikidata(
       imageUrl: a.image
         ? a.image.replace(/^http:/, "https:") + "?width=800"
         : undefined,
-      // transit + quartier résidentiel : rétrogradés d'office (cf. wikidataClassifyDemote).
-      demote: demote.transit.has(id) || demote.hoods.has(id) || undefined,
+      // transit + quartier résidentiel + infra/labo : rétrogradés d'office (cf.
+      // wikidataClassifyDemote). Stades/sommets traités à part (conditionnels, plus bas).
+      demote:
+        demote.transit.has(id) ||
+        demote.hoods.has(id) ||
+        demote.infra.has(id) ||
+        undefined,
       lat: a.lat,
       lon: a.lon,
     });

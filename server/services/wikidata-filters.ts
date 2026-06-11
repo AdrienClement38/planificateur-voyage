@@ -198,6 +198,10 @@ export async function wikidataPurge(qids: string[]): Promise<Set<string>> {
  *    INONDER la liste de zones (Upper West Side, SoHo, TriBeCa…) au détriment des
  *    SITES précis. Épargné si « site touristique » (Q570116 : Times Square) ou plage
  *    (Q40080 : Coney Island) → ces lieux-destinations restent en haut.
+ *  - `infra` : INFRA/INDUSTRIEL non-touristique (digue anti-inondation Q24853940 : MOSE ;
+ *    institut de recherche Q31855 : labo type IRAM) — jamais une sortie. Épargné si « site
+ *    touristique » ou musée (un institut qui se visite reste). NB : le port de COMMERCE
+ *    n'est PAS visé (même type Q15310171 que le Vieux-Port touristique → pas de signal).
  * On teste le tourisme en P31 DIRECT (pas P279*) : la hiérarchie des sous-classes
  * relie à tort certaines gares à « site touristique » (ex. « gare en cul-de-sac »).
  * Fail-safe : en cas d'échec réseau, ensembles vides → on ne rétrograde rien.
@@ -207,12 +211,14 @@ export async function wikidataClassifyDemote(qids: string[]): Promise<{
   sports: Set<string>;
   summits: Set<string>;
   hoods: Set<string>;
+  infra: Set<string>;
 }> {
   const out = {
     transit: new Set<string>(),
     sports: new Set<string>(),
     summits: new Set<string>(),
     hoods: new Set<string>(),
+    infra: new Set<string>(),
   };
   if (qids.length === 0) return out;
   const values = qids.map((q) => `wd:${q}`).join(" ");
@@ -237,7 +243,17 @@ export async function wikidataClassifyDemote(qids: string[]): Promise<{
     `?item wdt:P31/wdt:P279* ?nb. VALUES ?nb { wd:Q123705 wd:Q2983893 } ` +
     `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } ` +
     `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* wd:Q40080 } ` +
-    `BIND("n" AS ?kind) } }`;
+    `BIND("n" AS ?kind) ` +
+    `} UNION { ` +
+    // INFRA/INDUSTRIEL non-touristique : digue anti-inondation (Q24853940 : MOSE) et
+    // institut de recherche (Q31855 : labo type IRAM-Grenoble). Jamais une « sortie ».
+    // Épargné si « site touristique » (Q570116) ou musée (Q33506) → un institut qui se
+    // VISITE reste. ⚠ on NE vise PAS « port maritime » (Q15310171) : le Vieux-Port de
+    // Marseille a le même type que le port de commerce → pas de signal propre, on laisse.
+    `?item wdt:P31/wdt:P279* ?in. VALUES ?in { wd:Q24853940 wd:Q31855 } ` +
+    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } ` +
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* wd:Q33506 } ` +
+    `BIND("i" AS ?kind) } }`;
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
   let data = (await fetchJson(url, 9000)) as {
     results?: {
@@ -259,6 +275,7 @@ export async function wikidataClassifyDemote(qids: string[]): Promise<{
     else if (b.kind?.value === "s") out.sports.add(qid);
     else if (b.kind?.value === "m") out.summits.add(qid);
     else if (b.kind?.value === "n") out.hoods.add(qid);
+    else if (b.kind?.value === "i") out.infra.add(qid);
   }
   return out;
 }
