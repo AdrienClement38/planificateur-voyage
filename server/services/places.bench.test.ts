@@ -20,7 +20,13 @@ import { fetchPlaceActivities } from "./places";
 
 const N = 15; // page 1 ≈ top 15
 
-type Case = { city: string; contain: string[]; notContain: string[] };
+type Case = {
+  city: string;
+  contain: string[]; // DOIT figurer dans le top N
+  notContain: string[]; // ne DOIT PAS figurer dans le top N
+  containAll?: string[]; // DOIT figurer QUELQUE PART dans la liste complète
+  notContainAll?: string[]; // ne DOIT JAMAIS figurer (liste ENTIÈRE, pas que le top N)
+};
 
 const CASES: Case[] = [
   {
@@ -82,6 +88,21 @@ const CASES: Case[] = [
     contain: ["cathédrale"],
     notContain: ["centrale", "nucléaire", "Tricastin", "Cruas"],
   },
+  {
+    // Mégapole à l'ÉTRANGER : verrouille les trois fixes de cette série.
+    city: "New York",
+    // Icônes mondiales toujours en page 1.
+    contain: ["liberté", "empire state", "world trade", "central park"],
+    // (a) Voie « tourist attraction » : le mémorial du 11-Septembre (musée, 34 sitelinks
+    // → jadis coupé au rang ~138) DOIT être présent — classé par ses vraies vues FR+EN.
+    containAll: ["septembre"],
+    // (b) Demote des QUARTIERS résidentiels (Broadway/Greenwich Village rétrogradés hors
+    // page 1) + (c) purge des ARRONDISSEMENTS (Queens = comté « consolidated city-county »).
+    notContain: ["Queens", "Broadway", "Greenwich Village"],
+    // (c) purge des ZONES larges : communes du New Jersey, aire urbaine, rivière/estuaire —
+    // ABSENTES de toute la liste (la purge fiabilisée ne doit plus les laisser repasser).
+    notContainAll: ["Jersey City", "Hoboken", "Grand New York", "Hudson", "East River"],
+  },
 ];
 
 describe.skipIf(!process.env.RUN_BENCH)(
@@ -115,6 +136,24 @@ describe.skipIf(!process.env.RUN_BENCH)(
             expect(
               has(m),
               `${c.city} ne DOIT PAS contenir « ${m} » dans le top ${N}`,
+            ).toBe(false);
+          }
+
+          // Vérités sur la LISTE ENTIÈRE (≠ top N) — invariants plus STRICTS : un lieu
+          // qui DOIT exister quelque part, ou qui ne doit JAMAIS réapparaître (purges).
+          const all = list.map((p) => p.name.toLowerCase());
+          const hasAll = (s: string) =>
+            all.some((n) => n.includes(s.toLowerCase()));
+          for (const m of c.containAll ?? []) {
+            expect(
+              hasAll(m),
+              `${c.city} DOIT contenir « ${m} » (liste complète)`,
+            ).toBe(true);
+          }
+          for (const m of c.notContainAll ?? []) {
+            expect(
+              hasAll(m),
+              `${c.city} ne DOIT JAMAIS contenir « ${m} » (liste complète)`,
             ).toBe(false);
           }
         },
