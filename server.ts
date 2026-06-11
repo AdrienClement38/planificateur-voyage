@@ -11,6 +11,7 @@ import tripContentRouter from "./server/routes/trip-content";
 import uploadsRouter from "./server/routes/uploads";
 import { attachUser } from "./server/auth/middleware";
 import { runMigrations } from "./server/db/migrate-runner";
+import { closeDb } from "./server/db/client";
 import { createServer } from "node:http";
 import { initRealtime } from "./server/realtime";
 import { fetchPlaceActivities } from "./server/services/places";
@@ -611,6 +612,31 @@ async function startServer() {
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`[Co-Tripper Server] En écoute sur http://localhost:${PORT}`);
   });
+
+  // Arrêt PROPRE : fermer la base (flush PGlite + libération du verrou) AVANT de
+  // quitter. CRUCIAL pour PGlite — un process tué EN PLEINE ÉCRITURE corrompt le
+  // fichier. On capte SIGTERM (redéploiement AlwaysData, ou arrêt par l'outil
+  // d'aperçu) et SIGINT (Ctrl+C). Idempotent. NB : sous Windows, un `Stop-Process`
+  // (TerminateProcess) NE déclenche PAS ces signaux → c'est alors la sauvegarde auto
+  // au démarrage (cf. client.ts) qui sert de filet ; en prod (Linux) le signal est
+  // fiable, donc fermeture toujours propre.
+  let closing = false;
+  const gracefulShutdown = async (signal: string) => {
+    if (closing) return;
+    closing = true;
+    console.log(`[shutdown] ${signal} reçu — fermeture propre…`);
+    httpServer.close();
+    try {
+      await closeDb();
+      console.log("[shutdown] base fermée proprement.");
+    } catch (err) {
+      console.error("[shutdown] erreur à la fermeture de la base :", err);
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.once("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+  process.once("SIGINT", () => void gracefulShutdown("SIGINT"));
 }
 
 startServer().catch((err) => {
