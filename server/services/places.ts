@@ -304,10 +304,33 @@ async function doFetchPlaceActivities(
       return (b.fame ?? 0) - (a.fame ?? 0);
     });
 
+    // DÉDUP « même article » : deux entrées aux VUES IDENTIQUES non nulles et à < 200 m
+    // sont le MÊME lieu sous deux noms — translittération (« Jemaa el-Fna » / « Jamaâ
+    // el-fna ») ou synonyme (« Olympiéion » / « Temple de Zeus ») — qui tirent leurs vues
+    // du MÊME article Wikipédia, d'où l'égalité EXACTE (deux lieux DISTINCTS n'ont jamais
+    // exactement les mêmes vues sur 3 ans). On garde la 1ʳᵉ (tri stable → mieux classée,
+    // source Wikidata d'abord). Rattrape ce que la dédup par nom/token laisse passer.
+    const deduped: PlaceActivity[] = [];
+    for (const p of ranked) {
+      const v = p.views ?? 0;
+      const dup =
+        v > 0 &&
+        p.lat != null &&
+        p.lon != null &&
+        deduped.some(
+          (s) =>
+            (s.views ?? 0) === v &&
+            s.lat != null &&
+            s.lon != null &&
+            distanceMeters(p.lat!, p.lon!, s.lat!, s.lon!) < 200,
+        );
+      if (!dup) deduped.push(p);
+    }
+
     // Si on a assez de lieux AVEC photo, on ne garde QUE ceux-là (peps visuel,
     // zéro carte fade). Sinon on complète avec les moins illustrés mais notables.
-    const withPhoto = ranked.filter((p) => p.imageUrl);
-    const pool = withPhoto.length >= 5 ? withPhoto : ranked;
+    const withPhoto = deduped.filter((p) => p.imageUrl);
+    const pool = withPhoto.length >= 5 ? withPhoto : deduped;
 
     // Liste PROFONDE (pagination « Voir d'autres idées »), curée en 2 passages :
     // variété en tête PUIS remplissage jusqu'au plafond — cf. `curate` (fonction
