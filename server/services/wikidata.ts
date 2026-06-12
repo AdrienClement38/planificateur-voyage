@@ -46,6 +46,12 @@ const WD_BAD_TYPES = new Set([
   // d'événement non captée par l'exact-match des supertypes, et que le filtre « lieu »
   // laisse parfois passer sous charge → exclue d'office ici (type déjà en mémoire, 0 réseau).
   "Q124757",
+  // finale sportive (Q1366722) / finale de foot (Q65770283) : un MATCH géotaggé au stade
+  // (« Finale de la Coupe du monde des clubs FIFA 2014 » au Grand Stade de Marrakech) = un
+  // ÉVÉNEMENT, pas un lieu. Sous-classe de « sporting event » (Q16510064) NON captée par
+  // Q1656682 ; le filtre « lieu » la laisse passer en fail-open → exclue ici (local, 0 réseau).
+  "Q1366722",
+  "Q65770283",
   "Q13418847",
   "Q178561",
   "Q198",

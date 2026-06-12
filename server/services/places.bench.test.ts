@@ -123,6 +123,9 @@ const CASES: Case[] = [
     // le tri (Wikidata « Jemaa el-Fna » vs Wikivoyage « Place Jamaâ el-fna ») → on matche le
     // radical commun « el-fna », et sur la liste ENTIÈRE (robuste au throttle de l'API vues).
     containAll: ["el-fna"],
+    // Un ÉVÉNEMENT géotaggé au Grand Stade (finale de la Coupe du monde des clubs FIFA 2014)
+    // ne doit JAMAIS apparaître — type finale Q1366722 dans WD_BAD_TYPES (fil-piège fail-open).
+    notContainAll: ["Coupe du monde des clubs"],
   },
   {
     // Stade RÉGIONAL (Chaban-Delmas, 166k vues FR < plancher 250k) NE doit PAS dominer une
