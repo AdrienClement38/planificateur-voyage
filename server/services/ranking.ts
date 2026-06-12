@@ -18,6 +18,7 @@ import {
   mkdirSync,
   existsSync,
 } from "node:fs";
+import { wikidataPlaceFilter } from "./wikidata-filters";
 
 /**
  * Vues Wikipédia sur les 3 DERNIÈRES ANNÉES (≠ 60 j) pour des titres d'articles,
@@ -197,32 +198,40 @@ export async function fetchPopularity(
 }
 
 /**
- * Pour des TITRES d'articles FR, résout le titre EN ÉQUIVALENT via l'item Wikidata
- * partagé (schema:about) — une requête SPARQL par lot de 50. Permet de mesurer FR+EN
- * même les lieux sans Q-id connu côté appelant (Wikivoyage). Tolérant à l'échec : un
- * titre non résolu sera simplement compté en FR seul. Map { titre FR → titre EN }.
+ * Pour des TITRES d'articles FR, résout l'ITEM Wikidata partagé (schema:about) + le titre
+ * EN équivalent — une requête SPARQL par lot de 50. Le **Q-id** sert à VÉRIFIER que le titre
+ * désigne bien un LIEU : un titre nu de Wikivoyage peut être l'homonyme d'un sujet ultra-
+ * consulté et lui voler ses vues (« Monsanto » le parc de Lisbonne → l'ENTREPRISE Monsanto,
+ * 1,7M vues). EN en OPTIONAL (un lieu FR-seul résout quand même son Q-id). Tolérant à
+ * l'échec : titre non résolu → pas de meta → compté en FR seul, sans vérif lieu.
+ * Map { titre FR → { enT?, qid } }.
  */
-async function resolveEnTitles(
+async function resolveTitleMeta(
   frTitles: string[],
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+): Promise<Map<string, { enT?: string; qid: string }>> {
+  const out = new Map<string, { enT?: string; qid: string }>();
   for (let i = 0; i < frTitles.length; i += 50) {
     const batch = frTitles.slice(i, i + 50);
     const values = batch
       .map((t) => `"${t.replace(/[\\"]/g, " ")}"@fr`)
       .join(" ");
     const sparql =
-      `SELECT ?frT ?enT WHERE { VALUES ?frT { ${values} } ` +
+      `SELECT ?frT ?enT ?item WHERE { VALUES ?frT { ${values} } ` +
       `?fa schema:about ?item; schema:isPartOf <https://fr.wikipedia.org/>; schema:name ?frT. ` +
-      `?ea schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enT. }`;
+      `OPTIONAL { ?ea schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enT. } }`;
     const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
     const data = (await fetchJson(url, 12000)) as {
       results?: {
-        bindings?: Array<{ frT?: { value?: string }; enT?: { value?: string } }>;
+        bindings?: Array<{
+          frT?: { value?: string };
+          enT?: { value?: string };
+          item?: { value?: string };
+        }>;
       };
     } | null;
     for (const b of data?.results?.bindings ?? []) {
-      if (b.frT?.value && b.enT?.value) out.set(b.frT.value, b.enT.value);
+      const qid = b.item?.value?.split("/").pop();
+      if (b.frT?.value && qid) out.set(b.frT.value, { enT: b.enT?.value, qid });
     }
   }
   return out;
@@ -242,16 +251,27 @@ export async function fetchTitleViews(
 ): Promise<Map<string, number>> {
   const uniq = [...new Set(titles.filter(Boolean))];
   if (uniq.length === 0) return new Map();
-  const enOf = await resolveEnTitles(uniq);
+  const meta = await resolveTitleMeta(uniq);
+  // FILTRE « LIEU » du top-up — ferme la faille des titres nus : un titre Wikivoyage/OSM
+  // peut être l'homonyme d'un sujet ultra-consulté et lui voler ses vues (« Monsanto » le
+  // parc → l'ENTREPRISE Monsanto). On IGNORE les vues d'un titre dont l'entité est un
+  // NON-lieu CONFIRMÉ (même filtre que la source Wikidata → cohérent ; le MET, musée ET
+  // organisation, reste un lieu). Fail-open : filtre HS (null) ⇒ rien rejeté ; pas de
+  // Q-id (titre non résolu) ⇒ gardé (invérifiable).
+  const placeIds = await wikidataPlaceFilter([
+    ...new Set([...meta.values()].map((m) => m.qid)),
+  ]);
+  const enOf = [...meta.values()].map((m) => m.enT).filter(Boolean) as string[];
   const [frViews, enViews] = await Promise.all([
     wikiPageviews("fr", uniq),
-    wikiPageviews("en", [...new Set([...enOf.values()])]),
+    wikiPageviews("en", [...new Set(enOf)]),
   ]);
   const out = new Map<string, number>();
   for (const t of uniq) {
+    const m = meta.get(t);
+    if (m && placeIds !== null && !placeIds.has(m.qid)) continue; // non-lieu → vues ignorées
     const fr = frViews.get(t) ?? 0;
-    const enT = enOf.get(t);
-    const en = enT ? (enViews.get(enT) ?? 0) : 0;
+    const en = m?.enT ? (enViews.get(m.enT) ?? 0) : 0;
     const total = fr + en;
     if (total > 0) out.set(t, total);
   }
