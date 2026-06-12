@@ -9,7 +9,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
  */
 const config: CapacitorConfig = {
   appId: "com.cotripper.app",
-  appName: "Co-Tripper",
+  appName: "Co-Traveler",
   webDir: "dist",
 };
 

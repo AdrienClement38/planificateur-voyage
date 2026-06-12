@@ -1,4 +1,4 @@
-# 🛶 Co-Tripper — Planificateur de Voyage Coordonné
+# 🛶 Co-Traveler — Planificateur de Voyage Coordonné
 
 Ce projet est une application web collaborative et innovante conçue pour simplifier la planification et la coordination de voyages en groupe. Grâce à des outils interactifs en temps réel et une approche axée sur l'expérience utilisateur, l'organisation collective devient fluide, démocratique et visuelle.
 
@@ -8,7 +8,7 @@ Ce projet est une application web collaborative et innovante conçue pour simpli
 
 L'organisation d'un voyage à plusieurs est souvent un casse-tête (disponibilités divergentes, désaccords sur le budget ou les destinations, éparpillement des idées, etc.).
 
-**Co-Tripper** résout ce problème en centralisant toutes les étapes de la préparation au même endroit :
+**Co-Traveler** résout ce problème en centralisant toutes les étapes de la préparation au même endroit :
 1. **Trouver les meilleures dates** en superposant visuellement les disponibilités de chacun.
 2. **Décider ensemble de la destination** grâce à un système démocratique de vote.
 3. **Maîtriser le budget individuel** de manière transparente, interactive et en temps réel.

@@ -34,7 +34,7 @@ export default function CreateTripPage() {
       <form onSubmit={handleCreateTrip} className="space-y-5">
         <div className="space-y-1.5 font-sans">
           <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
-            Nom du Voyage Co-Tripper
+            Nom du Voyage Co-Traveler
           </label>
           <input
             type="text"

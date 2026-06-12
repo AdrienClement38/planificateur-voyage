@@ -81,7 +81,7 @@ function AppShell() {
 
         <footer className="pt-4 pb-12 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-3 border-t border-slate-200">
           <p className="font-medium text-slate-500">
-            Co-Tripper • Planificateur de Voyage en Groupe
+            Co-Traveler • Planificateur de Voyage en Groupe
           </p>
           <span className="italic">L'aventure commence ici ! 🌄</span>
         </footer>

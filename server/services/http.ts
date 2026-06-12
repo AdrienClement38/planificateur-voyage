@@ -7,7 +7,7 @@
 
 // Wikimedia exige un User-Agent identifiable avec contact (réduit le throttling).
 export const UA =
-  "Co-Tripper/1.0 (https://co-tripper.example; contact@co-tripper.example)";
+  "Co-Traveler/1.0 (https://co-tripper.example; contact@co-tripper.example)";
 
 /**
  * GET JSON tolérant à l'échec : timeout dur (AbortController), renvoie `null` sur

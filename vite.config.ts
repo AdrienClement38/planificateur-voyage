@@ -13,8 +13,8 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['pwa-icon.svg'],
         manifest: {
-          name: 'Co-Tripper — Planificateur de voyage en groupe',
-          short_name: 'Co-Tripper',
+          name: 'Co-Traveler — Planificateur de voyage en groupe',
+          short_name: 'Co-Traveler',
           description:
             'Planifiez vos voyages en groupe : dates, votes, budget, itinéraire et chat, même hors-ligne.',
           lang: 'fr',

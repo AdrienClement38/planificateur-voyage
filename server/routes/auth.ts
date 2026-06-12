@@ -151,7 +151,7 @@ router.get("/export", requireAuth, async (req, res) => {
     await Promise.all(memberTripIds.map((m) => loadTripAggregate(m.tripId)))
   ).filter(Boolean);
 
-  res.setHeader("Content-Disposition", 'attachment; filename="co-tripper-export.json"');
+  res.setHeader("Content-Disposition", 'attachment; filename="co-traveler-export.json"');
   res.json({
     exportedAt: new Date().toISOString(),
     account: {

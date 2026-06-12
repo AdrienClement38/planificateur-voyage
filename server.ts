@@ -615,7 +615,7 @@ async function startServer() {
   // En local, $HOST n'existe pas → 0.0.0.0 (toutes interfaces), comportement inchangé.
   const HOST = process.env.HOST || "0.0.0.0";
   httpServer.listen(PORT, HOST, () => {
-    console.log(`[Co-Tripper Server] En écoute sur ${HOST}:${PORT}`);
+    console.log(`[Co-Traveler Server] En écoute sur ${HOST}:${PORT}`);
   });
 
   // Arrêt PROPRE : fermer la base (flush PGlite + libération du verrou) AVANT de
@@ -646,6 +646,6 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-  console.error("[Co-Tripper Server] Échec du démarrage :", err);
+  console.error("[Co-Traveler Server] Échec du démarrage :", err);
   process.exit(1);
 });

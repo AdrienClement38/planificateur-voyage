@@ -268,7 +268,7 @@ export function useTripController() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "co-tripper-export.json";
+      a.download = "co-traveler-export.json";
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {

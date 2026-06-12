@@ -25,8 +25,8 @@ export default function AppHeader() {
           🛶
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
-          <span className="text-xl sm:text-2xl font-black font-display tracking-widest text-slate-950">
-            CO-TRIPPER
+          <span className="text-2xl sm:text-3xl font-brand text-slate-950 leading-tight">
+            Co-Traveler
           </span>
           <span className="bg-indigo-50 text-indigo-700 text-[10.5px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-indigo-100/50 self-start sm:self-auto">
             🧭 Planificateur de Voyage Coordonné

@@ -25,8 +25,8 @@ export default function AuthScreen() {
 
         <div className="text-center space-y-2">
           <span className="text-4xl">🛶</span>
-          <h1 className="text-2xl font-black font-display text-slate-950 tracking-wide uppercase">
-            CO-TRIPPER
+          <h1 className="text-4xl font-brand text-slate-950 leading-tight py-1">
+            Co-Traveler
           </h1>
           <p className="text-xs text-indigo-500 font-bold uppercase tracking-wider">
             Le Workspace des Voyageurs Connectés
@@ -133,7 +133,7 @@ export default function AuthScreen() {
         </p>
         <p className="text-[10px] text-center">
           <a href="/decouvrir.html" className="text-indigo-500 hover:underline font-semibold">
-            Découvrir Co-Tripper →
+            Découvrir Co-Traveler →
           </a>
         </p>
       </div>
