@@ -74,7 +74,7 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
 | Événements / émeutes (conclave, **Journée des Tuiles**) | bad-types (émeute Q124757) + NOISE_BLOCK ; **+ la source de secours Wikipédia est filtrée par le VRAI filtre lieu** (résolution du Q-id de chaque article → place-filter, `e16e144`) : la regex seule ratait ces non-lieux (émeute, académie, institution) | — |
 | Bateaux-objets (Fram) | exclus du filtre lieu | Bateaux-LIEUX (HMS Belfast) — *à ajouter, cf. Reste à faire* |
 | Gares-transit UTILITAIRES (Saint-Charles, aéroports, Penn Station) — **RÉTROGRADÉES, pas supprimées** | transport P31/P279* (gare Q55488, métro Q928830, gare routière Q494829, aéroport Q1248784) SANS le tag **« site touristique » Q570116 en P31 DIRECT** → drapeau `demote` → tout en bas du tri (`wikidataClassifyDemote`). Règle GÉNÉRALE & MONDIALE, langue-agnostique | **Gares-MONUMENTS** marquées site touristique (Grand Central) |
-| Stades 2ᵉ rang / locaux **+ RÉGIONAUX** (Lluís-Companys, Emirates, Ullevaal, Chaban-Delmas, Old Trafford…) — **RÉTROGRADÉS** | enceinte sportive P31/P279* (stade Q483110 / sports venue Q1076486 / arène Q641226) NON « site touristique » : on ne garde que **LE stade le plus consulté de la ville** ET **≥ `STADIUM_VIEWS_MIN` = 250k vues FR** (`dc1cb78`, relevé de 100k). Un seuil ABSOLU seul échoue (Lluís-Companys 307k n'est pas le top de Barcelone) → règle « **top de la ville ET plancher** ». Le plancher 250k ne laisse que les stades **MONDIAUX** ; les régionaux tombent (Chaban-Delmas 166k → plus #1 à Bordeaux, Old Trafford 122k, Anfield 127k, Matmut 152k) | **LE stade MONDIALEMENT iconique** (Camp Nou 513k, Wembley 339k, Vélodrome 520k, Stade de France) ; **panathénaïque** (antique, via tag « site touristique ») |
+| Stades 2ᵉ rang / locaux **+ RÉGIONAUX** (Lluís-Companys, Emirates, Ullevaal, Chaban-Delmas, Old Trafford…) — **RÉTROGRADÉS** | enceinte sportive P31/P279* (stade Q483110 / sports venue Q1076486 / arène Q641226) NON « site touristique » : on ne garde que **LE stade le plus consulté de la ville** ET **≥ `STADIUM_VIEWS_MIN` = 250k vues FR** (`dc1cb78`, relevé de 100k). Un seuil ABSOLU seul échoue (Lluís-Companys 307k n'est pas le top de Barcelone) → règle « **top de la ville ET plancher** ». Le plancher 250k ne laisse que les stades **MONDIAUX** ; les régionaux tombent (Chaban-Delmas 166k → plus #1 à Bordeaux, Old Trafford 122k, Anfield 127k, Matmut 152k) | **LE stade MONDIALEMENT iconique** (Camp Nou 513k, Wembley 339k, Vélodrome 520k, Stade de France) ; **panathénaïque** (antique, via tag « site touristique ») ; **TREMPLINS de saut à ski** (Q1109069, exemptés `bf6588c`) — Holmenkollen = belvédère + musée du ski, pas une enceinte de compétition → revient #10 à Oslo |
 | **Quartiers** résidentiels en EXCÈS (Broadway, Greenwich Village, Upper West Side…) — **RÉTROGRADÉS** | quartier Q123705/Q2983893 (P31/P279*) → drapeau `demote` (`wikidataClassifyDemote`, branche `hoods`), SAUF « site touristique » DIRECT (Times Square) ou plage Q40080 (Coney Island). Évite que les ZONES noient les SITES précis | **Quartiers-destinations** (Times Square, Coney Island ; Montmartre/Trastevere restent par leurs vues) |
 | **Infra / labo** non-touristique (digue **MOSE**, institut de recherche **IRAM**) — **RÉTROGRADÉS** | branche `infra` (`4640b82`) : flood barrier Q24853940 / institut de recherche Q31855 (P31/P279*), SAUF musée Q33506 ou « site touristique » Q570116. ⚠ PAS « port maritime » Q15310171 (même type que le **Vieux-Port** touristique → aucun signal propre, on laisse) | Un institut/musée qui se VISITE (épargné par le garde-fou) ; le Vieux-Port |
 
@@ -84,6 +84,14 @@ locaux). Ex. Oslo : Fram, Kon-Tiki, navires vikings, Folkemuseum. Puis purge sec
 > « Temple de Zeus ») — qui tirent leurs vues du MÊME article Wikipédia, d'où l'égalité
 > EXACTE (deux lieux DISTINCTS n'ont jamais exactement les mêmes vues sur 3 ans). On garde
 > la 1ʳᵉ (tri stable). Rattrape ce que la dédup par nom/token laisse passer (cf. plus bas).
+
+> **Filtre « lieu » du TOP-UP des vues** (`b5667e5`, dans `ranking.ts`) : un titre NU de
+> Wikivoyage/OSM peut être l'homonyme d'un sujet ultra-consulté et lui VOLER ses vues
+> (« Monsanto » le parc de Lisbonne → les 1,7M vues de l'**ENTREPRISE** Monsanto → sortait
+> #1 !). `fetchTitleViews` résout le **Q-id** de chaque titre et IGNORE ses vues si l'entité
+> est un NON-lieu CONFIRMÉ (même `wikidataPlaceFilter` que la source Wikidata → cohérent ;
+> un musée, lieu ET organisation, reste un lieu). Fail-open : filtre HS → rien rejeté ;
+> titre sans Q-id → gardé. La tour de Belém reprend #1, le vrai parc reste #32 (vraies vues).
 
 ## « Œuvres à voir » (volet sur les cartes)
 
@@ -343,3 +351,8 @@ Par ville (DOIT contenir / NE DOIT PAS / œuvres) :
   translittération/synonyme virés : Jemaa/Jamaâ, Olympiéion/Temple de Zeus)
 - `4640b82` **démote infra/labo** (branche `infra` : digue MOSE Q24853940 + institut de
   recherche IRAM Q31855 ; garde-fous musée/tourisme ; port de commerce NON visé)
+- `bf6588c` **tremplins de saut à ski exemptés** du démote sportif (Q1109069) → Holmenkollen
+  (belvédère + musée du ski) revient #10 à Oslo, n'est plus traité comme un stade de foot
+- `b5667e5` **place-filtre le top-up des vues** (`fetchTitleViews`) : un titre-homonyme ne
+  vole plus les vues d'un sujet célèbre (« Monsanto » le parc ≠ l'entreprise) → la tour de
+  Belém reprend #1 à Lisbonne
