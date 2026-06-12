@@ -36,8 +36,9 @@ const CASES: Case[] = [
   },
   {
     city: "Oslo, Norvège",
-    // Les MUSÉES doivent figurer (Q33506 dans l'allow-list) ; AUCUN stade local.
-    contain: ["Munch", "Fram"],
+    // Les MUSÉES doivent figurer (Q33506 dans l'allow-list) ; le TREMPLIN de Holmenkollen
+    // aussi (belvédère touristique → exempté du démote sportif) ; AUCUN stade local.
+    contain: ["Munch", "Fram", "Holmenkoll"],
     notContain: ["Ullevaal", "Bislett", "Nadderud", "Intility", "Le Cri"],
   },
   {

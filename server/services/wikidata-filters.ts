@@ -192,7 +192,8 @@ export async function wikidataPurge(qids: string[]): Promise<Set<string>> {
  *  - `sports` : enceinte SPORTIVE (stade/arène) non touristique — rétrogradée
  *    SEULEMENT si peu de vues (< STADIUM_VIEWS_MIN, testé en aval), pour virer les
  *    stades locaux « au pif » tout en GARDANT les mondiaux (Camp Nou…). Épargnée
- *    si « site touristique » (stade panathénaïque antique).
+ *    si « site touristique » (stade panathénaïque antique) ou TREMPLIN de saut à ski
+ *    (Q1109069 : Holmenkollen = belvédère/musée, pas une enceinte de compétition).
  *  - `summits` : sommets en EXCÈS (au-delà de SUMMIT_KEEP, testé en aval).
  *  - `hoods` : QUARTIER résidentiel (Q123705/Q2983893) — rétrogradé pour ne pas
  *    INONDER la liste de zones (Upper West Side, SoHo, TriBeCa…) au détriment des
@@ -228,7 +229,13 @@ export async function wikidataClassifyDemote(qids: string[]): Promise<{
     `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } BIND("t" AS ?kind) ` +
     `} UNION { ` +
     `?item wdt:P31/wdt:P279* ?sv. VALUES ?sv { wd:Q483110 wd:Q1076486 wd:Q641226 } ` +
-    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } BIND("s" AS ?kind) ` +
+    `FILTER NOT EXISTS { ?item wdt:P31 wd:Q570116 } ` +
+    // TREMPLIN de saut à ski (Q1109069) EXEMPTÉ : par type c'est une « winter sports venue »
+    // → enceinte sportive, mais en vrai c'est un BELVÉDÈRE touristique (Holmenkollen : tour
+    // + musée du ski + tyrolienne), pas un stade de compétition. Sans ça il tombait hors
+    // page 1 d'Oslo. Les tremplins obscurs ont peu de vues → ne remontent pas pour autant.
+    `FILTER NOT EXISTS { ?item wdt:P31/wdt:P279* wd:Q1109069 } ` +
+    `BIND("s" AS ?kind) ` +
     `} UNION { ` +
     // SOMMETS (montagne Q8502 / sommet Q207326) : une ville de montagne (Chamonix)
     // est noyée sous des dizaines de pics notables pour les alpinistes mais sans
