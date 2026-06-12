@@ -610,8 +610,12 @@ async function startServer() {
 
   const httpServer = createServer(app);
   initRealtime(httpServer); // WebSocket temps réel (/ws)
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Co-Tripper Server] En écoute sur http://localhost:${PORT}`);
+  // Hôtes en reverse-proxy (AlwaysData) : le proxy joint l'app sur l'adresse qu'il FOURNIT
+  // (IPv6 via $HOST), pas sur 0.0.0.0 (IPv4 seul) → sinon « connection to upstream failed ».
+  // En local, $HOST n'existe pas → 0.0.0.0 (toutes interfaces), comportement inchangé.
+  const HOST = process.env.HOST || "0.0.0.0";
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`[Co-Tripper Server] En écoute sur ${HOST}:${PORT}`);
   });
 
   // Arrêt PROPRE : fermer la base (flush PGlite + libération du verrou) AVANT de
