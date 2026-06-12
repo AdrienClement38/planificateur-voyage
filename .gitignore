@@ -1,9 +1,12 @@
 node_modules/
 build/
-dist/
 coverage/
 data/
 .DS_Store
 *.log
 .env*
 !.env.example
+
+# dist/ est COMMITÉ exprès : AlwaysData ne peut pas builder (OOM), donc on livre le build
+# par `git pull` au lieu de scp. On garde juste les sourcemaps hors du repo (inutiles en prod).
+dist/**/*.map
